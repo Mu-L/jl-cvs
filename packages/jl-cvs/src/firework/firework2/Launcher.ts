@@ -1,6 +1,6 @@
-import type { Optional } from '@jl-org/ts-tool'
 import type { Firework2 } from './Firework2'
-import { Ball, getColor, getDPR, timeFunc } from '@/canvasTool'
+import type { Optional } from '@/types'
+import { Ball, getColor, timeFunc } from '@/canvasTool'
 import { getRandomNum } from '@/utils'
 
 /**
@@ -22,7 +22,6 @@ export class Launcher {
   duration: number
   /** 发射时的时间 */
   startTime = 0
-  dpr: number
 
   constructor(opts: Optional<LauncherOpts, 'y'>) {
     const {
@@ -34,7 +33,6 @@ export class Launcher {
       x = width * getRandomNum(0.2, 0.8, true),
       radius = getRandomNum(2, 5),
       duration = getRandomNum(2000, 3500),
-      dpr = getDPR(),
     } = opts
 
     this.firework = firework
@@ -42,9 +40,7 @@ export class Launcher {
     this.x = x
     this.y = y
     this.ty = height * getRandomNum(0.6, 0.8, true)
-    this.dpr = dpr
-
-    this.radius = radius * this.dpr
+    this.radius = radius
     this.duration = duration
   }
 
@@ -73,7 +69,7 @@ export class Launcher {
     /** 添加烟花尾迹 */
     if (Math.random() > 0.7 && opacity >= 0.1) {
       firework.addDebris({
-        x: x + getRandomNum(-2, 2, true) * this.dpr,
+        x: x + getRandomNum(-2, 2, true),
         y,
         ctx: firework.ctx,
       })

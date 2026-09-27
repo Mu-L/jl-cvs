@@ -1,5 +1,5 @@
 import type { Firework2 } from './Firework2'
-import { getColor, getDPR } from '@/canvasTool'
+import { getColor } from '@/canvasTool'
 import { delFromItem, getRandomNum } from '@/utils'
 import { ExplosiveDebris, type ExplosiveDebrisOpts } from './ExplosiveDebris'
 
@@ -13,8 +13,6 @@ export class Explosive {
   color: string
   /** 爆炸碎片数量 */
   debrisNum: number
-  dpr: number
-
   debrisArr: ExplosiveDebris[] = []
   /** 是否要二次爆炸 */
   needSecondBurst: boolean
@@ -26,8 +24,6 @@ export class Explosive {
     this.x = opts.x
     this.y = opts.y
     this.color = opts.color ?? getColor()
-    this.dpr = opts.dpr ?? getDPR()
-
     this.debrisNum = opts.debrisNum ?? getRandomNum(50, 400)
     this.needSecondBurst = opts.needSecondBurst ?? this.debrisNum <= 100
   }
@@ -47,7 +43,6 @@ export class Explosive {
       const explosiveDebris = new ExplosiveDebris({
         firework: this.firework,
         color: this.color,
-        dpr: this.dpr,
         ...params,
       })
       explosiveDebris.start()
@@ -68,7 +63,7 @@ export class Explosive {
           this.start(5, {
             x: res.x,
             y: res.y,
-            speed: 1 * this.dpr,
+            speed: 1,
             firework: this.firework,
           })
         }

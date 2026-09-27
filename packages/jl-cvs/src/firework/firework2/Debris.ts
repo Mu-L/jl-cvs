@@ -1,4 +1,4 @@
-import { Ball, getDPR } from '@/canvasTool'
+import { Ball } from '@/canvasTool'
 import { getRandomNum } from '@/utils'
 
 /**
@@ -14,6 +14,7 @@ export class Debris {
 
   /** 创建的时间 */
   startTime = 0
+  private lastUpdateTime = 0
 
   /** 半径 */
   radius: number
@@ -22,18 +23,15 @@ export class Debris {
   /** 位置 */
   x: number
   y: number
-  dpr: number
-
   ctx: CanvasRenderingContext2D
 
   constructor(opts: DebrisOpts) {
-    this.dpr = opts.dpr ?? getDPR()
     this.color = opts.color ?? '#fff'
-    this.radius = (opts.radius ?? 1) * this.dpr
+    this.radius = opts.radius ?? 1
     this.opacity = opts.opacity ?? getRandomNum(0.1, 0.5, true)
     this.duration = opts.duration ?? getRandomNum(0.5, 1, true)
 
-    this.g = (opts.g ?? 0.98) * this.dpr
+    this.g = opts.g ?? 0.98
     this.x = opts.x
     this.y = opts.y
     this.ctx = opts.ctx
@@ -41,11 +39,15 @@ export class Debris {
 
   start() {
     this.startTime = Date.now()
+    this.lastUpdateTime = this.startTime
   }
 
   update() {
-    const duration = (Date.now() - this.startTime) / 1000
-    this.y -= this.g * duration
+    const now = Date.now()
+    const duration = (now - this.startTime) / 1000
+    const frameScale = Math.min(3, (now - this.lastUpdateTime) / (1000 / 60))
+    this.lastUpdateTime = now
+    this.y -= this.g * duration * frameScale
     new Ball({
       x: this.x,
       y: this.y,

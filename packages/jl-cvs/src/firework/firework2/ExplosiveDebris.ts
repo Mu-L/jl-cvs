@@ -1,5 +1,5 @@
 import type { Firework2 } from './Firework2'
-import { Ball, getColor, getDPR } from '@/canvasTool'
+import { Ball, getColor } from '@/canvasTool'
 import { getRandomNum } from '@/utils'
 
 /**
@@ -20,30 +20,27 @@ export class ExplosiveDebris {
   g: number
 
   startTime = 0
+  private lastUpdateTime = 0
   duration = getRandomNum(0.5, 1, true)
 
   /** 痕迹碎片数量 */
   debrisNum: number
   /** 是否要二次爆炸 */
   needSecondBurst: boolean
-  dpr: number
-
   constructor(opts: ExplosiveDebrisOpts) {
     this.firework = opts.firework
     this.x = opts.x
     this.y = opts.y
-    this.dpr = opts.dpr ?? getDPR()
-
     this.color = Math.random() > 0.2
       ? opts.color || getColor()
       : '#fff'
-    this.radius = (opts.radius ?? 2) * this.dpr
+    this.radius = opts.radius ?? 2
     this.angle = getRandomNum(0, 2 * Math.PI, true)
 
-    this.speed = (opts.speed ?? getRandomNum(0.1, 4, true)) * this.dpr
+    this.speed = opts.speed ?? getRandomNum(0.1, 4, true)
     this.vx = Math.cos(this.angle) * this.speed
     this.vy = Math.sin(this.angle) * this.speed
-    this.g = (opts.g ?? 0.98) * this.dpr
+    this.g = opts.g ?? 0.98
 
     this.debrisNum = opts.debrisNum ?? 3
     this.needSecondBurst = opts.needSecondBurst ?? false
@@ -51,13 +48,17 @@ export class ExplosiveDebris {
 
   start() {
     this.startTime = Date.now()
+    this.lastUpdateTime = this.startTime
   }
 
   update() {
-    const duration = (Date.now() - this.startTime) / 1000
+    const now = Date.now()
+    const duration = (now - this.startTime) / 1000
+    const frameScale = Math.min(3, (now - this.lastUpdateTime) / (1000 / 60))
+    this.lastUpdateTime = now
     const vy = this.vy - this.g * duration
-    this.x += this.vx
-    this.y += vy
+    this.x += this.vx * frameScale
+    this.y += vy * frameScale
 
     const progress = duration / this.duration
     let opacity = progress > 0.7
@@ -79,11 +80,11 @@ export class ExplosiveDebris {
     if (this.debrisNum > 0 && Math.random() > 0.8) {
       this.debrisNum--
       this.firework.addDebris({
-        x: this.x + getRandomNum(-2, 2, true) * this.dpr,
-        y: this.y + getRandomNum(-2, 2, true) * this.dpr,
+        x: this.x + getRandomNum(-2, 2, true),
+        y: this.y + getRandomNum(-2, 2, true),
         color: this.color,
-        radius: 0.5 * this.dpr,
-        g: 0.1 * this.dpr,
+        radius: 0.5,
+        g: 0.1,
         ctx: this.firework.ctx,
       })
     }
