@@ -23,13 +23,13 @@ export async function cutoutImgToMask(
 
   const imgData = await getImgData(imgUrl)
   const { r, g, b, a } = getColorInfo(replaceColor)
-  const { width, height } = imgData
+  const { width, height } = imgData.imgData
 
   /** 创建一个临时的 alpha 通道数组，保存原始 alpha 值 */
   const originalAlpha = new Uint8ClampedArray(width * height)
 
   eachPixel(imgData.imgData, ([R, G, B, A], x, y, index) => {
-    originalAlpha[index] = A
+    originalAlpha[y * width + x] = A
     const data = imgData.imgData.data
 
     if (A > alphaThreshold) {
@@ -133,7 +133,7 @@ export async function cutoutImgToMask(
   /**
    * 不要计算 DPR，这里应该让调用者决定
    */
-  const { cvs, ctx } = createCvs(imgData.width, imgData.height)
+  const { cvs, ctx } = createCvs(width, height)
   ctx.putImageData(imgData.imgData, 0, 0)
   const base64 = cvs.toDataURL('image/png')
 
@@ -229,14 +229,28 @@ function edgeSmooth(
     featherAmount = 3,
   }: CutoutImgOpts = {},
 ) {
+  if (
+    originalImgData.width !== maskData.width
+    || originalImgData.height !== maskData.height
+  ) {
+    throw new Error(
+      `Image dimension mismatch: Original (${originalImgData.width}x${originalImgData.height}), Mask (${maskData.width}x${maskData.height}). They must be identical.`,
+    )
+  }
+
+  const searchRadius = Math.max(
+    0,
+    Math.floor(blurRadius),
+    Math.ceil(featherAmount),
+  )
+  const normalizedFeatherAmount = Math.max(0, featherAmount)
+
   /** 创建临时遮罩数组用于边缘检测和平滑处理 */
   const tempMask = new Uint8Array(maskData.data.length / 4)
 
   for (let i = 0; i < maskData.data.length; i += 4) {
-    /** 提取遮罩的alpha通道或颜色信息 */
-    tempMask[i / 4] = maskData.data[i] > 0 || maskData.data[i + 1] > 0 || maskData.data[i + 2] > 0
-      ? 255
-      : 0
+    /** 遮罩语义由 alpha 通道决定，RGB 颜色不影响透明度 */
+    tempMask[i / 4] = maskData.data[i + 3]
   }
 
   const { width, height } = maskData
@@ -250,48 +264,50 @@ function edgeSmooth(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4
+      const maskAlpha = tempMask[i / 4]
 
-      /** 检查当前像素是否在遮罩边缘 */
-      let isEdge = false
-      let edgeIntensity = 0
+      if (maskAlpha > 0) {
+        let minTransparentDistance = Number.POSITIVE_INFINITY
+        if (normalizedFeatherAmount > 0) {
+          for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+            for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+              if (dx === 0 && dy === 0)
+                continue
 
-      if (tempMask[i / 4] > 0) {
-        /** 检查周围像素，判断是否为边缘 */
-        for (let dy = -blurRadius; dy <= blurRadius; dy++) {
-          for (let dx = -blurRadius; dx <= blurRadius; dx++) {
-            const nx = x + dx
-            const ny = y + dy
+              const distance = Math.sqrt(dx * dx + dy * dy)
+              if (distance > searchRadius)
+                continue
 
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              const ni = (ny * width + nx) * 4
-
-              if (tempMask[ni / 4] === 0) {
-                isEdge = true
-                /** 计算到边缘的距离影响 */
-                const distance = Math.sqrt(dx * dx + dy * dy)
-                if (distance <= blurRadius) {
-                  edgeIntensity = Math.max(edgeIntensity, 1 - distance / blurRadius)
-                }
+              const nx = x + dx
+              const ny = y + dy
+              if (
+                nx >= 0
+                && nx < width
+                && ny >= 0
+                && ny < height
+                && tempMask[ny * width + nx] === 0
+              ) {
+                minTransparentDistance = Math.min(
+                  minTransparentDistance,
+                  distance,
+                )
               }
             }
           }
         }
-      }
 
-      /** 应用原始遮罩 */
-      if (tempMask[i / 4] > 0) {
         resultData.data[i] = originalImgData.data[i]
         resultData.data[i + 1] = originalImgData.data[i + 1]
         resultData.data[i + 2] = originalImgData.data[i + 2]
 
-        /** 边缘处理 - 应用半透明过渡 */
-        if (isEdge) {
-          /** 边缘羽化 - 降低alpha值实现平滑过渡 */
-          resultData.data[i + 3] = Math.max(0, 255 - edgeIntensity * featherAmount * 255)
-        }
-        else {
-          resultData.data[i + 3] = 255 /** 非边缘区域保持完全不透明 */
-        }
+        const featherFactor = Number.isFinite(minTransparentDistance)
+          ? Math.min(1, minTransparentDistance / normalizedFeatherAmount)
+          : 1
+        resultData.data[i + 3] = Math.round(
+          originalImgData.data[i + 3]
+          * (maskAlpha / 255)
+          * featherFactor,
+        )
       }
       else {
         /** 遮罩外区域设为透明 */

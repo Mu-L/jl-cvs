@@ -29,7 +29,7 @@ export function genSvg(viewBox = '0 0 100 100', width = 300, height = 300) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', viewBox)
   svg.setAttribute('width', `${width}`)
-  svg.setAttribute('width', `${height}`)
+  svg.setAttribute('height', `${height}`)
 
   return svg
 }
@@ -117,7 +117,7 @@ export function genTextArr(width = 100, height = 100, gap = 10, opts: FontOpts =
       textArr.push(genText(i + offsetX, offsetY, i))
     }
   }
-  else if (position.includes('bottom')) {
+  if (position.includes('bottom')) {
     for (let i = 0; i <= width; i += gap) {
       textArr.push(genText(i + offsetX, height - offsetY, i))
     }
@@ -129,7 +129,7 @@ export function genTextArr(width = 100, height = 100, gap = 10, opts: FontOpts =
       textArr.push(genText(offsetX, i + offsetY, i))
     }
   }
-  else if (position.includes('right')) {
+  if (position.includes('right')) {
     for (let i = 0; i <= height; i += gap) {
       textArr.push(genText(width - offsetX, i + offsetY, i))
     }
@@ -142,7 +142,7 @@ export function genTextArr(width = 100, height = 100, gap = 10, opts: FontOpts =
     text.setAttribute('font-size', `${fontSize}`)
     text.setAttribute('fill', fill)
     text.setAttribute('text-anchor', 'middle')
-    text.setAttribute('alignment-baseline', 'middle')
+    text.setAttribute('dominant-baseline', 'middle')
 
     text.textContent = `${content}`
     return text

@@ -186,7 +186,7 @@ export class UnRedoLinkedList<T> {
    * 在 add 新节点时会自动调用，通常无需手动调用。
    */
   cleanUnusedNodes(callback?: (isCleanAll: boolean) => void) {
-    if (this.needCleanAll) {
+    if (this.needCleanAll || (!this.curNode && this.head)) {
       this.needCleanAll = false
       this.cleanAll()
       callback?.(true)
@@ -280,9 +280,9 @@ export function createUnReDoList<T>() {
      * @param callback 一个可选的回调函数，接收撤销后的当前状态作为参数。
      * @returns 返回撤销后的当前状态。
      */
-    undo: (callback?: (item: T) => void) => {
+    undo: (callback?: (item: T | undefined) => void) => {
       if (undoList.length <= 0) {
-        callback?.(undefined as any) // 保持回调行为一致性
+        callback?.(undefined)
         return
       }
 
@@ -296,9 +296,9 @@ export function createUnReDoList<T>() {
      * @param callback 一个可选的回调函数，接收被重做的状态作为参数。
      * @returns 返回被重做的状态。
      */
-    redo: (callback?: (item: T) => void) => {
+    redo: (callback?: (item: T | undefined) => void) => {
       if (redoList.length <= 0) {
-        callback?.(undefined as any)
+        callback?.(undefined)
         return
       }
 

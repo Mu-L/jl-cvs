@@ -1,3 +1,4 @@
+import type { BoundRect } from '../type'
 import type { BaseShapeOpts } from './BaseShape'
 import type { ShapeType } from './type'
 import { BaseShape } from './BaseShape'
@@ -10,9 +11,6 @@ export class Circle extends BaseShape {
 
   constructor(opts: BaseShapeOpts) {
     super(opts)
-
-    this.shapeStyle = opts.shapeStyle || {}
-    this.setShapeStyle(opts.shapeStyle)
   }
 
   /**
@@ -46,9 +44,8 @@ export class Circle extends BaseShape {
 
     if (this.shapeStyle.fillStyle) {
       ctx.fillStyle = this.shapeStyle.fillStyle
+      ctx.fill()
     }
-
-    ctx.fill()
   }
 
   isInPath(x: number, y: number): boolean {
@@ -63,5 +60,15 @@ export class Circle extends BaseShape {
     const dx = this.endX - this.startX
     const dy = this.endY - this.startY
     return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  override getBounds(): BoundRect {
+    const radius = this.radius
+    return {
+      x: this.startX - radius,
+      y: this.startY - radius,
+      width: radius * 2,
+      height: radius * 2,
+    }
   }
 }

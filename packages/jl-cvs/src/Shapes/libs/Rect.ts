@@ -42,9 +42,8 @@ export class Rect extends BaseShape {
 
     if (this.shapeStyle.fillStyle) {
       ctx.fillStyle = this.shapeStyle.fillStyle
+      ctx.fill()
     }
-
-    ctx.fill()
   }
 
   isInPath(x: number, y: number): boolean {
