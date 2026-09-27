@@ -29,6 +29,8 @@ export class ShotImg implements ILifecycleManager {
 
   /** Canvas显示尺寸与图片原始尺寸的比例 */
   private scaleRatio = { x: 1, y: 1 }
+  /** 本次拖动未经归一化的起点 */
+  private dragOrigin: Point = [0, 0]
 
   /**
    * 把你传入的 Canvas 变成一个可拖动的截图区域
@@ -107,6 +109,8 @@ export class ShotImg implements ILifecycleManager {
 
   rmEvent() {
     this.cvs.removeEventListener('mousedown', this.onMouseDown)
+    window.removeEventListener('mousemove', this.onMouseMove)
+    window.removeEventListener('mouseup', this.onMouseUp)
   }
 
   dispose() {
@@ -154,10 +158,11 @@ export class ShotImg implements ILifecycleManager {
   }
 
   /** 转换鼠标坐标为图片原始尺寸下的坐标 */
-  private transformCoordinates(offsetX: number, offsetY: number): Point {
+  private transformCoordinates(clientX: number, clientY: number): Point {
+    const rect = this.cvs.getBoundingClientRect()
     return [
-      offsetX * this.scaleRatio.x,
-      offsetY * this.scaleRatio.y,
+      Math.max(0, Math.min(this.width, (clientX - rect.left) * this.scaleRatio.x)),
+      Math.max(0, Math.min(this.height, (clientY - rect.top) * this.scaleRatio.y)),
     ]
   }
 
@@ -166,22 +171,29 @@ export class ShotImg implements ILifecycleManager {
     this.updateScaleRatio()
 
     /** 转换坐标 */
-    this.stPos = this.transformCoordinates(e.offsetX, e.offsetY)
+    this.dragOrigin = this.transformCoordinates(e.clientX, e.clientY)
+    this.stPos = [this.dragOrigin[0], this.dragOrigin[1]]
+    this.endPos = [this.dragOrigin[0], this.dragOrigin[1]]
+    this.shotWidth = 0
+    this.shotHeight = 0
 
-    this.cvs.addEventListener('mousemove', this.onMouseMove)
-    this.cvs.addEventListener('mouseup', this.onMouseUp)
+    window.addEventListener('mousemove', this.onMouseMove)
+    window.addEventListener('mouseup', this.onMouseUp)
   }
 
   private onMouseMove = (e: MouseEvent) => {
     /** 转换坐标 */
-    this.endPos = this.transformCoordinates(e.offsetX, e.offsetY)
+    this.endPos = this.transformCoordinates(e.clientX, e.clientY)
 
-    const [stX, stY] = this.stPos
+    const [stX, stY] = this.dragOrigin
     const [endX, endY] = this.endPos
 
-    /** 记录 `终点 - 起点` 得到宽高 */
-    this.shotWidth = endX - stX
-    this.shotHeight = endY - stY
+    this.stPos = [
+      Math.min(stX, endX),
+      Math.min(stY, endY),
+    ]
+    this.shotWidth = Math.abs(endX - stX)
+    this.shotHeight = Math.abs(endY - stY)
 
     this.clear()
     this.drawMask()
@@ -189,11 +201,12 @@ export class ShotImg implements ILifecycleManager {
   }
 
   private onMouseUp = () => {
-    this.cvs.removeEventListener('mousemove', this.onMouseMove)
-    this.cvs.removeEventListener('mouseup', this.onMouseUp)
+    window.removeEventListener('mousemove', this.onMouseMove)
+    window.removeEventListener('mouseup', this.onMouseUp)
   }
 
   private clear() {
+    this.ctx.globalCompositeOperation = 'source-over'
     this.ctx.clearRect(0, 0, this.width, this.height)
   }
 
@@ -211,6 +224,7 @@ export class ShotImg implements ILifecycleManager {
     /** 往擦除区域填充 */
     this.ctx.globalCompositeOperation = 'destination-over'
     this.drawImg()
+    this.ctx.globalCompositeOperation = 'source-over'
   }
 }
 

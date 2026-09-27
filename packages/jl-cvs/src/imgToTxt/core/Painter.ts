@@ -13,7 +13,8 @@ export class Painter {
   private ctx: CanvasRenderingContext2D
   private textIndex: number
   private isGray: boolean
-  private raqId: number
+  private raqId: number | null
+  private isRunning = false
 
   constructor(options: PainterOptions) {
     this.canvas = options.canvas
@@ -24,25 +25,39 @@ export class Painter {
     this.isDynamic = options.isDynamic
     this.ctx = this.canvas.getContext('2d')!
     this.textIndex = 0
-    this.raqId = 0
+    this.raqId = null
     this.initContext()
   }
 
   fps() {
+    if (this.isRunning)
+      return
+
+    this.isRunning = true
+    this.source.start()
     if (this.isDynamic) {
-      this.raqId = requestAnimationFrame(() => {
+      const tick = () => {
+        if (!this.isRunning)
+          return
+
         this.draw()
-        this.fps()
-      })
+        this.raqId = requestAnimationFrame(tick)
+      }
+      this.raqId = requestAnimationFrame(tick)
     }
     else {
       this.draw()
+      this.isRunning = false
     }
   }
 
   stop() {
-    cancelAnimationFrame(this.raqId)
-    this.raqId = 0
+    this.isRunning = false
+    if (this.raqId !== null) {
+      cancelAnimationFrame(this.raqId)
+      this.raqId = null
+    }
+    this.source.stop()
   }
 
   private initContext() {
@@ -81,9 +96,11 @@ export class Painter {
     const { canvas } = this
     const bitmap = this.source.getBitmapAndDraw()
 
-    /** 如果是绘制文字，大小则需要重新设置一下，其他的其实不变 */
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
+    if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      this.initContext()
+    }
 
     this.ctx.clearRect(0, 0, canvas.width, canvas.height)
 

@@ -87,19 +87,27 @@ function normalizeOptions(options: TxtImgOpt) {
   if (!options.canvas) {
     throw new Error('require "canvas" option')
   }
-
-  const { txtStyle = {} } = options.opts
-  txtStyle.color = txtStyle.color ?? '#000'
-  txtStyle.size = txtStyle.size ?? 200
-  txtStyle.family = txtStyle.family ?? 'Microsoft YaHei'
-
-  options.replaceText = options.replaceText ?? '6'
-  options.gap = options.gap ?? 10
-  options.isDynamic = !!options.isDynamic
-  options.isGray = !!options.isGray
   if (!options.opts) {
     throw new Error('require "opts" option')
   }
+
+  const { txtStyle = {} } = options.opts
+  options.opts.txtStyle = {
+    color: txtStyle.color ?? '#000',
+    size: txtStyle.size ?? 200,
+    family: txtStyle.family ?? 'Microsoft YaHei',
+  }
+
+  options.replaceText = options.replaceText ?? '6'
+  options.gap = options.gap ?? 10
+  if (!options.replaceText) {
+    throw new Error('"replaceText" cannot be empty')
+  }
+  if (options.gap <= 0) {
+    throw new Error('"gap" must be greater than 0')
+  }
+  options.isDynamic = !!options.isDynamic
+  options.isGray = !!options.isGray
 }
 
 function createImage(src: string | HTMLImageElement): Promise<HTMLImageElement | false> {

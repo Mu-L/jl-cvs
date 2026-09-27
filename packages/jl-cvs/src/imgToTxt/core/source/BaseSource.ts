@@ -22,6 +22,12 @@ export abstract class BaseSource {
   protected abstract setCvsSize(): void
   protected abstract draw(): void
 
+  /** 启动动态源 */
+  start(): void { }
+
+  /** 停止动态源 */
+  stop(): void { }
+
   /** 仅仅调用一次实现类的 setCvsSize 方法 */
   private init() {
     if (this.isInit)

@@ -13,7 +13,14 @@ export class VideoSource extends BaseSource {
     this.height = option.height
     /** 静音才能播放 */
     this.video.muted = this.video.loop = true
-    this.video.play()
+  }
+
+  override start() {
+    void this.video.play()
+  }
+
+  override stop() {
+    this.video.pause()
   }
 
   protected override setCvsSize() {
