@@ -1,5 +1,7 @@
-import type { ILifecycleManager } from '../types'
+import { getDPR } from '@/canvasTool'
 import { debounce, getWinHeight, getWinWidth, throttle } from '@jl-org/tool'
+import type { ILifecycleManager } from '../types'
+import { applyHiDPI } from '../utils/dpr'
 
 export class DotGrid implements ILifecycleManager {
   private canvas: HTMLCanvasElement
@@ -14,11 +16,13 @@ export class DotGrid implements ILifecycleManager {
   private mouseX: number = -1
   private mouseY: number = -1
   private highlightedDots: Set<string> = new Set()
-  private dotStates: Map<string, { highlighted: boolean, progress: number }> = new Map()
+  private dotStates: Map<string, { highlighted: boolean; progress: number }> = new Map()
 
   private animationFrameId: number | null = null
+  private lastFrameTime: number | null = null
+  private dpr = getDPR()
   private options: Required<DotGridOptions>
-  private declare onResizeDebounce: (width: number, height: number) => void
+  declare private onResizeDebounce: (width: number, height: number) => void
 
   // ======================
   // * Handlers
@@ -61,13 +65,11 @@ export class DotGrid implements ILifecycleManager {
     this.setDebounceEvent()
 
     this.mouseMoveHandler = throttle((event: MouseEvent) => {
-      if (!this.rect)
-        return
-
-      const rect = this.rect
+      const rect = this.canvas.getBoundingClientRect()
+      this.rect = rect
       /** 计算Canvas的缩放比例 */
-      const scaleX = this.canvas.width / rect.width
-      const scaleY = this.canvas.height / rect.height
+      const scaleX = this.width / rect.width
+      const scaleY = this.height / rect.height
 
       /** 根据缩放比例调整鼠标坐标 */
       this.mouseX = (event.clientX - rect.left) * scaleX
@@ -120,6 +122,8 @@ export class DotGrid implements ILifecycleManager {
   /** 更新配置 */
   updateOptions(newOptions: Partial<DotGridOptions>) {
     this.options = { ...this.options, ...newOptions }
+    this.width = this.options.width
+    this.height = this.options.height
     this.initializeGrid()
     this.setDebounceEvent()
   }
@@ -129,6 +133,8 @@ export class DotGrid implements ILifecycleManager {
       (newWidth, newHeight) => {
         this.width = newWidth
         this.height = newHeight
+        this.options.width = newWidth
+        this.options.height = newHeight
         this.initializeGrid()
         this.updateHighlightedDots()
       },
@@ -141,9 +147,8 @@ export class DotGrid implements ILifecycleManager {
     this.rows = Math.floor(this.height / this.options.dotSpacingY) + 1
     this.cols = Math.floor(this.width / this.options.dotSpacingX) + 1
 
-    /** 设置 Canvas 尺寸 */
-    this.canvas.width = this.width
-    this.canvas.height = this.height
+    /** 设置 Canvas 尺寸（dpr 边界统一入口） */
+    applyHiDPI(this.canvas, this.ctx, this.width, this.height, this.dpr)
 
     this.dotStates.clear()
     for (let r = 0; r < this.rows; r++) {
@@ -154,8 +159,7 @@ export class DotGrid implements ILifecycleManager {
   }
 
   private updateHighlightedDots() {
-    if (this.mouseX < 0 || this.mouseY < 0)
-      return
+    if (this.mouseX < 0 || this.mouseY < 0) return
 
     const dotRow = Math.floor(this.mouseY / this.options.dotSpacingY)
     const dotCol = Math.floor(this.mouseX / this.options.dotSpacingX)
@@ -201,23 +205,24 @@ export class DotGrid implements ILifecycleManager {
     }
   }
 
-  private animate() {
-    const deltaTime = 16
-    for (const [key, state] of this.dotStates) {
+  private animate(time = performance.now()) {
+    const deltaTime = this.lastFrameTime === null
+      ? 16
+      : Math.min(50, time - this.lastFrameTime)
+    this.lastFrameTime = time
+    for (const state of this.dotStates.values()) {
       if (state.highlighted && state.progress < 1) {
         state.progress += deltaTime / this.options.transitionTime
-        if (state.progress > 1)
-          state.progress = 1
+        if (state.progress > 1) state.progress = 1
       }
       else if (!state.highlighted && state.progress > 0) {
         state.progress -= deltaTime / this.options.transitionTime
-        if (state.progress < 0)
-          state.progress = 0
+        if (state.progress < 0) state.progress = 0
       }
     }
 
     this.drawWithAnimation()
-    this.animationFrameId = requestAnimationFrame(() => this.animate())
+    this.animationFrameId = requestAnimationFrame((time) => this.animate(time))
   }
 
   private drawWithAnimation() {
@@ -261,7 +266,7 @@ export class DotGrid implements ILifecycleManager {
 
   private drawDots() {
     this.ctx.fillStyle = this.options.backgroundColor
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    this.ctx.fillRect(0, 0, this.width, this.height)
 
     this.ctx.fillStyle = this.options.dotColor
     for (let row = 0; row < this.rows; row++) {

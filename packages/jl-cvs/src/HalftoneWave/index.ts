@@ -1,6 +1,7 @@
-import type { ILifecycleManager } from '../types'
-import { colorAddOpacity, debounce, getWinHeight, getWinWidth } from '@jl-org/tool'
 import { getDPR } from '@/canvasTool'
+import { colorAddOpacity, debounce, getWinHeight, getWinWidth } from '@jl-org/tool'
+import type { ILifecycleManager } from '../types'
+import { applyHiDPI } from '../utils/dpr'
 
 export class HalftoneWave implements ILifecycleManager {
   private canvas: HTMLCanvasElement
@@ -13,9 +14,10 @@ export class HalftoneWave implements ILifecycleManager {
   private time: number = 0
 
   private animationFrameId: number | null = null
+  private lastFrameTime: number | null = null
   private dpr = getDPR()
   private options: Required<HalftoneWaveOptions>
-  private declare onResizeDebounce: (width: number, height: number) => void
+  declare private onResizeDebounce: (width: number, height: number) => void
 
   constructor(canvas: HTMLCanvasElement, options: HalftoneWaveOptions = {}) {
     this.canvas = canvas
@@ -81,6 +83,8 @@ export class HalftoneWave implements ILifecycleManager {
   /** 更新配置 */
   updateOptions(newOptions: Partial<HalftoneWaveOptions>) {
     this.options = { ...this.options, ...newOptions }
+    this.width = this.options.width
+    this.height = this.options.height
     this.initializeGrid()
     this.setDebounceEvent()
   }
@@ -90,6 +94,8 @@ export class HalftoneWave implements ILifecycleManager {
       (newWidth, newHeight) => {
         this.width = newWidth
         this.height = newHeight
+        this.options.width = newWidth
+        this.options.height = newHeight
         this.initializeGrid()
       },
       this.options.resizeDebounceTime,
@@ -97,10 +103,8 @@ export class HalftoneWave implements ILifecycleManager {
   }
 
   private initializeGrid() {
-    /** 设置 Canvas 尺寸，支持 dpr */
-    this.canvas.width = this.width * this.dpr
-    this.canvas.height = this.height * this.dpr
-    this.ctx.scale(this.dpr, this.dpr)
+    /** 设置 Canvas 尺寸（dpr 边界统一入口） */
+    applyHiDPI(this.canvas, this.ctx, this.width, this.height, this.dpr)
 
     this.rows = Math.ceil(this.height / this.options.gridSize)
     this.cols = Math.ceil(this.width / this.options.gridSize)
@@ -133,10 +137,14 @@ export class HalftoneWave implements ILifecycleManager {
     }
   }
 
-  private animate() {
+  private animate(time = performance.now()) {
+    const deltaTime = this.lastFrameTime === null
+      ? 16
+      : Math.min(50, time - this.lastFrameTime)
+    this.lastFrameTime = time
     this.drawHalftoneWave()
-    this.time += this.options.waveSpeed
-    this.animationFrameId = requestAnimationFrame(() => this.animate())
+    this.time += this.options.waveSpeed * (deltaTime / 16)
+    this.animationFrameId = requestAnimationFrame((time) => this.animate(time))
   }
 }
 

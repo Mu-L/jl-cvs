@@ -1,5 +1,7 @@
-import type { ILifecycleManager } from '../types'
+import { getDPR } from '@/canvasTool'
 import { debounce, getWinHeight, getWinWidth, throttle } from '@jl-org/tool'
+import type { ILifecycleManager } from '../types'
+import { applyHiDPI } from '../utils/dpr'
 
 export class Grid implements ILifecycleManager {
   private canvas: HTMLCanvasElement
@@ -14,11 +16,13 @@ export class Grid implements ILifecycleManager {
   private mouseX: number = -1
   private mouseY: number = -1
   private highlightedCells: Set<string> = new Set()
-  private cellStates: Map<string, { highlighted: boolean, progress: number }> = new Map()
+  private cellStates: Map<string, { highlighted: boolean; progress: number }> = new Map()
 
   private animationFrameId: number | null = null
+  private lastFrameTime: number | null = null
+  private dpr = getDPR()
   private options: Required<GridOptions>
-  private declare onResizeDebounce: (width: number, height: number) => void
+  declare private onResizeDebounce: (width: number, height: number) => void
 
   // ======================
   // * Handlers
@@ -76,13 +80,11 @@ export class Grid implements ILifecycleManager {
     this.setDebounceEvent()
 
     this.mouseMoveHandler = throttle((event: MouseEvent) => {
-      if (!this.rect)
-        return
-
-      const rect = this.rect
+      const rect = this.canvas.getBoundingClientRect()
+      this.rect = rect
       /** 计算Canvas的缩放比例 */
-      const scaleX = this.canvas.width / rect.width
-      const scaleY = this.canvas.height / rect.height
+      const scaleX = this.width / rect.width
+      const scaleY = this.height / rect.height
 
       /** 根据缩放比例调整鼠标坐标 */
       this.mouseX = (event.clientX - rect.left) * scaleX
@@ -114,6 +116,8 @@ export class Grid implements ILifecycleManager {
   /** 更新配置 */
   updateOptions(newOptions: Partial<GridOptions>) {
     this.options = { ...this.options, ...newOptions }
+    this.width = this.options.width
+    this.height = this.options.height
     this.initializeGrid()
     this.setDebounceEvent()
   }
@@ -123,6 +127,8 @@ export class Grid implements ILifecycleManager {
       (newWidth, newHeight) => {
         this.width = newWidth
         this.height = newHeight
+        this.options.width = newWidth
+        this.options.height = newHeight
 
         /** 重新初始化网格 */
         this.initializeGrid()
@@ -135,7 +141,7 @@ export class Grid implements ILifecycleManager {
   }
 
   /**
-   * 初始化网格，计算行数和列数，设置 Canvas 尺寸，并初始化单元格状态。
+   * 初始化网格，计算行数和列数，设置 Canvas 尺寸，并初始化单元格状态
    */
   private initializeGrid() {
     this.rect = this.canvas.getBoundingClientRect()
@@ -143,9 +149,8 @@ export class Grid implements ILifecycleManager {
     this.rows = Math.floor(this.height / this.options.cellHeight)
     this.cols = Math.floor(this.width / this.options.cellWidth)
 
-    /** 设置 Canvas 尺寸 */
-    this.canvas.width = this.width
-    this.canvas.height = this.height
+    /** 设置 Canvas 尺寸（dpr 边界统一入口） */
+    applyHiDPI(this.canvas, this.ctx, this.width, this.height, this.dpr)
 
     /** 初始化单元格状态 */
     this.cellStates.clear()
@@ -178,8 +183,7 @@ export class Grid implements ILifecycleManager {
   }
 
   private updateHighlightedCells() {
-    if (this.mouseX < 0 || this.mouseY < 0)
-      return
+    if (this.mouseX < 0 || this.mouseY < 0) return
 
     const cellRow = Math.floor(this.mouseY / this.options.cellHeight)
     const cellCol = Math.floor(this.mouseX / this.options.cellWidth)
@@ -222,23 +226,24 @@ export class Grid implements ILifecycleManager {
     }
   }
 
-  private animate() {
-    const deltaTime = 16
-    for (const [key, state] of this.cellStates) {
+  private animate(time = performance.now()) {
+    const deltaTime = this.lastFrameTime === null
+      ? 16
+      : Math.min(50, time - this.lastFrameTime)
+    this.lastFrameTime = time
+    for (const state of this.cellStates.values()) {
       if (state.highlighted && state.progress < 1) {
         state.progress += deltaTime / this.options.transitionTime
-        if (state.progress > 1)
-          state.progress = 1
+        if (state.progress > 1) state.progress = 1
       }
       else if (!state.highlighted && state.progress > 0) {
         state.progress -= deltaTime / this.options.transitionTime
-        if (state.progress < 0)
-          state.progress = 0
+        if (state.progress < 0) state.progress = 0
       }
     }
 
     this.drawWithAnimation()
-    this.animationFrameId = requestAnimationFrame(() => this.animate())
+    this.animationFrameId = requestAnimationFrame((time) => this.animate(time))
   }
 
   private drawWithAnimation() {
@@ -285,7 +290,7 @@ export class Grid implements ILifecycleManager {
 
   private drawGrid() {
     this.ctx.fillStyle = this.options.backgroundColor
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    this.ctx.fillRect(0, 0, this.width, this.height)
 
     this.ctx.strokeStyle = this.options.borderColor
     this.ctx.lineWidth = this.options.borderWidth
@@ -302,7 +307,7 @@ export class Grid implements ILifecycleManager {
       const y = row * this.options.cellHeight
       this.ctx.beginPath()
       this.ctx.moveTo(0, y)
-      this.ctx.lineTo(this.canvas.width, y)
+      this.ctx.lineTo(this.width, y)
       this.ctx.stroke()
     }
 
@@ -310,7 +315,7 @@ export class Grid implements ILifecycleManager {
       const x = col * this.options.cellWidth
       this.ctx.beginPath()
       this.ctx.moveTo(x, 0)
-      this.ctx.lineTo(x, this.canvas.height)
+      this.ctx.lineTo(x, this.height)
       this.ctx.stroke()
     }
   }
