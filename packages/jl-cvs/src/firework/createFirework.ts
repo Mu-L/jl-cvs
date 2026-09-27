@@ -78,6 +78,15 @@ export function createFirework(
       bombArr.shift()
     }
 
+    /** 升到顶部爆炸区即爆，避免飞出画布外不可见 */
+    for (let i = fireworkArr.length - 1; i >= 0; i--) {
+      const fw = fireworkArr[i]
+      if (fw.y >= opts.height - yRange) {
+        fireworkArr.splice(i, 1)
+        bombArr.push(fw)
+      }
+    }
+
     fireworkArr.forEach((fw) => {
       fw.draw()
       fw.y += speed
