@@ -7,15 +7,15 @@ import { Firework2, type Firework2Opts } from './Firework2'
  */
 export function createFirework2(
   cvs: HTMLCanvasElement,
-  opts: Options,
+  opts: Options = {},
 ) {
-  let id: number
+  let id: number | null = null
   const fireworkArr: Firework2[] = []
-  const ctx = cvs.getContext('2d')!
-  const dpr = getDPR()
+  const ctx = opts.ctx ?? cvs.getContext('2d')!
+  const dpr = opts.dpr ?? getDPR()
   const {
-    width = cvs.width,
-    height = cvs.height,
+    width = cvs.clientWidth || cvs.width,
+    height = cvs.clientHeight || cvs.height,
   } = opts
 
   setOpts()
@@ -37,7 +37,13 @@ export function createFirework2(
   }
 
   function addFirework() {
-    const firework = new Firework2({ ...opts, dpr })
+    const firework = new Firework2({
+      ...opts,
+      ctx,
+      dpr,
+      width,
+      height,
+    })
     firework.launch()
     fireworkArr.push(firework)
   }
@@ -46,23 +52,32 @@ export function createFirework2(
    * 绘制烟花
    */
   function draw() {
-    /** 使用半透明清空画布，形成拖尾效果 */
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
-    ctx.fillRect(0, 0, width, height)
+    if (id !== null) return
 
-    const list = [...fireworkArr]
-    list.forEach((firework) => {
-      firework.update()
-      if (firework.isEnd()) {
-        delFromItem(fireworkArr, firework)
-      }
-    })
+    const update = () => {
+      /** 使用半透明清空画布，形成拖尾效果 */
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+      ctx.fillRect(0, 0, width, height)
 
-    id = requestAnimationFrame(draw)
+      const list = [...fireworkArr]
+      list.forEach((firework) => {
+        firework.update()
+        if (firework.isEnd()) {
+          delFromItem(fireworkArr, firework)
+        }
+      })
+
+      id = requestAnimationFrame(update)
+    }
+
+    update()
   }
 
   function stop() {
+    if (id === null) return
+
     cancelAnimationFrame(id)
+    id = null
   }
 
   function setOpts() {
@@ -71,15 +86,14 @@ export function createFirework2(
     cvs.style.width = `${width}px`
     cvs.style.height = `${height}px`
 
-    /** 修改坐标系 */
-    ctx.scale(dpr, -dpr)
-    ctx.translate(0, -height)
+    /** dpr 边界：一次性进入逻辑坐标系（含 y 轴翻转，无法走 applyHiDPI，见 utils/dpr 约定） */
+    ctx.setTransform(dpr, 0, 0, -dpr, 0, height * dpr)
   }
 }
 
-export type Options = {
+export type Options = Omit<Firework2Opts, 'ctx' | 'width' | 'height' | 'dpr'> & {
   width?: number
   height?: number
   dpr?: number
+  ctx?: CanvasRenderingContext2D
 }
-& Firework2Opts

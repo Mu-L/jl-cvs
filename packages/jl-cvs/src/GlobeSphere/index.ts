@@ -1,5 +1,6 @@
-import { colorAddOpacity, debounce } from '@jl-org/tool'
 import { getDPR } from '@/canvasTool'
+import { colorAddOpacity, debounce } from '@jl-org/tool'
+import { applyHiDPI } from '../utils/dpr';
 
 /**
  * 用小点绘制一个旋转的球体
@@ -20,7 +21,7 @@ export class GlobeSphere {
   private ctx: CanvasRenderingContext2D
 
   private points: [number, number, number][] = []
-  private animationFrame: number = 0
+  private animationFrame: number | null = null
   private rotation: number = 0
   private width: number
   private height: number
@@ -58,10 +59,10 @@ export class GlobeSphere {
       (newWidth, newHeight) => {
         this.width = newWidth
         this.height = newHeight
+        this.options.width = newWidth
+        this.options.height = newHeight
 
-        this.canvas.width = this.width * this.dpr
-        this.canvas.height = this.height * this.dpr
-        this.ctx.scale(this.dpr, this.dpr)
+        applyHiDPI(this.canvas, this.ctx, this.width, this.height, this.dpr)
       },
       this.options.resizeDebounceTime,
     )
@@ -73,12 +74,22 @@ export class GlobeSphere {
 
   /** 开始动画 */
   startAnimation() {
+    if (this.animationFrame !== null) return
+
     this.animate()
   }
 
   /** 停止动画 */
   stopAnimation() {
+    if (this.animationFrame === null) return
+
     cancelAnimationFrame(this.animationFrame)
+    this.animationFrame = null
+  }
+
+  /** 销毁动画 */
+  dispose() {
+    this.stopAnimation()
   }
 
   /** 调整大小 */
@@ -89,15 +100,18 @@ export class GlobeSphere {
   /** 更新配置 */
   updateOptions(opts: Partial<GlobeSphereOpts>) {
     this.options = { ...this.options, ...opts }
-    if (opts.pointCount || opts.radius) {
+    if (opts.width !== undefined || opts.height !== undefined) {
+      this.width = this.options.width
+      this.height = this.options.height
+      this.initCanvas()
+    }
+    if (opts.pointCount !== undefined || opts.radius !== undefined) {
       this.generatePoints()
     }
   }
 
   private initCanvas() {
-    this.canvas.width = this.width * this.dpr
-    this.canvas.height = this.height * this.dpr
-    this.ctx.scale(this.dpr, this.dpr)
+    applyHiDPI(this.canvas, this.ctx, this.width, this.height, this.dpr)
   }
 
   private generatePoints() {
@@ -135,7 +149,7 @@ export class GlobeSphere {
       const rotatedX = x * Math.cos(this.rotation) + z * Math.sin(this.rotation)
       const rotatedZ = z * Math.cos(this.rotation) - x * Math.sin(this.rotation)
 
-      const scale = perspectiveDistance / (perspectiveDistance + rotatedZ)
+      const scale = perspectiveDistance / Math.max(1, perspectiveDistance - rotatedZ)
       const projectedX = centerX + rotatedX * scale
       const projectedY = centerY + y * scale
 
