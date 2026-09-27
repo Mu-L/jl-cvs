@@ -1,8 +1,8 @@
-import type { NoteBoard } from '../NoteBoard'
 import { Brush } from '@/Shapes'
+import type { NoteBoard } from '../NoteBoard'
 
 export class NoteBoardEvents {
-  constructor(private readonly noteBoard: NoteBoard) { }
+  constructor(private readonly noteBoard: NoteBoard) {}
 
   bindEvent() {
     this.rmEvent()
@@ -36,10 +36,11 @@ export class NoteBoardEvents {
     const worldPoint = noteBoard.screenToWorld({ x: e.offsetX, y: e.offsetY })
 
     /** 优先处理左键拖拽形状 */
-    if (e.button === 0 && !interaction.isBrushMode()) {
+    if (e.button === 0 && interaction.isShapeMode()) {
       const shape = interaction.getShapeAtPoint(worldPoint)
-      if (shape && shape.name !== 'brush') {
+      if (shape) {
         interaction.draggedShape = shape.clone()
+        interaction.draggedShapeMode = interaction.getShapeDrawMode(shape)
         interaction.isDragging = true
         interaction.dragStartPoint = worldPoint
         noteBoard.canvas.style.cursor = 'grabbing'
@@ -108,7 +109,7 @@ export class NoteBoardEvents {
       interaction.draggedShape.translate(dx, dy)
       interaction.dragStartPoint = worldPoint
 
-      // 实时预览，将拖拽中的形状副本交给渲染器绘制
+      /** 实时预览，将拖拽中的形状副本交给渲染器绘制 */
       renderer.tempShape = interaction.draggedShape
       renderer.redrawAll()
       return
@@ -135,8 +136,7 @@ export class NoteBoardEvents {
     }
 
     if (noteBoard.isDrawing && noteBoard.interaction.isBrushMode()) {
-      if (!noteBoard.currentBrush)
-        return
+      if (!noteBoard.currentBrush) return
 
       const worldPoint = noteBoard.screenToWorld({ x: e.offsetX, y: e.offsetY })
       const points = noteBoard.currentBrush.getPoints()
@@ -167,8 +167,12 @@ export class NoteBoardEvents {
 
     /** 结束形状拖拽 */
     if (interaction.isDragging && interaction.draggedShape) {
-      // 将拖拽后的形状副本加入历史记录
-      interaction.addShapesToHistory([interaction.draggedShape])
+      /** 将拖拽后的形状副本按原绘制模式加入历史，保持混合模式语义 */
+      interaction.addShapesToHistory(
+        [interaction.draggedShape],
+        interaction.draggedShapeMode ?? undefined,
+      )
+      interaction.draggedShapeMode = null
       interaction.isDragging = false
       interaction.draggedShape = null
       renderer.tempShape = null // 清除临时形状
@@ -209,7 +213,11 @@ export class NoteBoardEvents {
 
     /** 结束形状拖拽 */
     if (interaction.isDragging && interaction.draggedShape) {
-      interaction.addShapesToHistory([interaction.draggedShape])
+      interaction.addShapesToHistory(
+        [interaction.draggedShape],
+        interaction.draggedShapeMode ?? undefined,
+      )
+      interaction.draggedShapeMode = null
       interaction.isDragging = false
       interaction.draggedShape = null
       renderer.tempShape = null // 清除临时形状

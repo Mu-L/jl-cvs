@@ -11,7 +11,10 @@ export abstract class BaseShape {
   endY: number
 
   abstract name: ShapeType
-  shapeStyle: ShapeStyle = {}
+  shapeStyle: ShapeStyle = {
+    strokeStyle: '#000',
+    lineWidth: 1,
+  }
 
   /**
    * Canvas系统元数据

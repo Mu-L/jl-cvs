@@ -1,6 +1,7 @@
-import type { NoteBoard, RecordPath } from '../'
-import type { BoundRect } from '@/Shapes/type'
+import { clearAllCvs } from '@/canvasTool'
 import { type BaseShape, ImageShape } from '@/Shapes'
+import type { BoundRect } from '@/Shapes/type'
+import type { NoteBoard, RecordPath } from '../'
 
 /**
  * NoteBoard 渲染模块
@@ -8,10 +9,11 @@ import { type BaseShape, ImageShape } from '@/Shapes'
 export class NoteBoardRenderer {
   /** 标志位，用于防止重复的重绘请求 */
   private isRedrawScheduled = false
+  private redrawAnimationFrame?: number
   /** 用于实时预览的临时形状（如拖拽中的形状） */
   public tempShape: BaseShape | null = null
 
-  constructor(private readonly noteBoard: NoteBoard) { }
+  constructor(private readonly noteBoard: NoteBoard) {}
 
   /**
    * 请求重绘所有内容 (异步队列)
@@ -22,10 +24,27 @@ export class NoteBoardRenderer {
       return // 如果已经安排了重绘，则直接返回，等待下一帧的绘制
     }
     this.isRedrawScheduled = true
-    requestAnimationFrame(() => {
-      this._performRedraw()
-      this.isRedrawScheduled = false
+    this.redrawAnimationFrame = requestAnimationFrame(() => {
+      try {
+        this._performRedraw()
+      }
+      finally {
+        this.isRedrawScheduled = false
+        this.redrawAnimationFrame = undefined
+      }
     })
+  }
+
+  /**
+   * 取消尚未执行的重绘任务
+   */
+  dispose() {
+    if (this.redrawAnimationFrame !== undefined) {
+      cancelAnimationFrame(this.redrawAnimationFrame)
+      this.redrawAnimationFrame = undefined
+    }
+    this.isRedrawScheduled = false
+    this.tempShape = null
   }
 
   /**
@@ -33,7 +52,7 @@ export class NoteBoardRenderer {
    */
   private _performRedraw() {
     const { noteBoard } = this
-    const { noteBoardOpts, canvasList, viewport, history, imgInfo, ctx } = noteBoard
+    const { noteBoardOpts, canvasList, viewport, history, ctx } = noteBoard
 
     const visibleRect = noteBoard.getVisibleWorldRect()
 
@@ -46,8 +65,12 @@ export class NoteBoardRenderer {
       viewport.resetTransform(item.ctx, noteBoard.dpr)
     })
 
-    /** 如果背景不跟随，则不清空它 */
-    noteBoard.clear(noteBoardOpts.isImgCanvasFollow, true)
+    for (const item of canvasList) {
+      if (item.name === 'imgCanvas' && !noteBoardOpts.isImgCanvasFollow) {
+        continue
+      }
+      clearAllCvs(item.ctx, item.canvas)
+    }
 
     /** 应用变换 */
     canvasList.forEach((item) => {
@@ -58,9 +81,8 @@ export class NoteBoardRenderer {
     })
 
     /** 重绘背景图片 */
-    if (noteBoardOpts.isImgCanvasFollow && imgInfo) {
-      const { img, x, y, drawWidth, drawHeight } = imgInfo
-      noteBoard.imgCtx.drawImage(img, x, y, drawWidth, drawHeight)
+    if (noteBoardOpts.isImgCanvasFollow) {
+      noteBoard.redrawImgCanvas()
     }
 
     const lastRecord = history.curValue
@@ -73,7 +95,7 @@ export class NoteBoardRenderer {
          * 核心渲染逻辑：按 ID 去重，只绘制最新的形状
          * 遍历所有历史记录，后面的形状会覆盖前面相同 ID 的形状
          */
-        const finalShapes = new Map<string, { shape: BaseShape, record: RecordPath }>()
+        const finalShapes = new Map<string, { shape: BaseShape; record: RecordPath }>()
         for (const record of lastRecord) {
           for (const shape of record.shapes) {
             finalShapes.set(shape.meta.id, { shape, record })
@@ -135,7 +157,17 @@ export class NoteBoardRenderer {
         /** 临时形状的绘制也需要包裹，以防它污染最终的 setMode */
         ctx.save()
         try {
-          ctx.globalCompositeOperation = noteBoardOpts.shapeGlobalCompositeOperation
+          /** 按被拖形状的原绘制模式设置混合模式，预览与落盘一致 */
+          const previewMode = noteBoard.interaction.draggedShapeMode
+          if (previewMode === 'erase') {
+            ctx.globalCompositeOperation = 'destination-out'
+          }
+          else if (previewMode === 'brush') {
+            ctx.globalCompositeOperation = noteBoardOpts.drawGlobalCompositeOperation
+          }
+          else {
+            ctx.globalCompositeOperation = noteBoardOpts.shapeGlobalCompositeOperation
+          }
           this.tempShape.draw(ctx)
         }
         finally {

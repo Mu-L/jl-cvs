@@ -24,27 +24,40 @@ export class ImageShape extends BaseShape {
     onLoad?: (img: HTMLImageElement) => void,
     onError?: (err: Error) => void,
   ) {
-    if (!this.meta.imgSrc && !src) {
-      throw new Error('ImageShape meta.src or src param is required')
+    const source = src ?? this.meta.imgSrc
+    if (!source) {
+      throw new Error('ImageShape meta.imgSrc or src param is required')
     }
 
+    this.meta.imgSrc = source
+    this.loadState = 'loading'
     this.loadPromise = new Promise((resolve, reject) => {
-      if (isStr(this.meta.imgSrc)) {
-        this.image = new Image()
-        this.image.src = this.meta.imgSrc
-      }
-      else {
-        this.image = this.meta.imgSrc as HTMLImageElement
-      }
+      const image = isStr(source)
+        ? new Image()
+        : source
+      this.image = image
+      let settled = false
 
-      this.image.onload = () => {
+      const handleLoad = () => {
+        if (settled)
+          return
+
+        settled = true
+        image.onload = null
+        image.onerror = null
         this.loadState = 'loaded'
         /** 图片加载完成后触发回调 */
-        this.onLoadCallback?.(this.image as HTMLImageElement)
-        onLoad?.(this.image as HTMLImageElement)
-        resolve(this.image as HTMLImageElement)
+        this.onLoadCallback?.(image)
+        onLoad?.(image)
+        resolve(image)
       }
-      this.image.onerror = () => {
+      const handleError = () => {
+        if (settled)
+          return
+
+        settled = true
+        image.onload = null
+        image.onerror = null
         this.loadState = 'error'
         const err = new Error('ImageShape load failed')
         /** 图片加载失败后触发回调 */
@@ -52,7 +65,26 @@ export class ImageShape extends BaseShape {
         onError?.(err)
         reject(err)
       }
+
+      image.onload = handleLoad
+      image.onerror = handleError
+
+      if (isStr(source)) {
+        image.src = source
+      }
+      else if (image.complete) {
+        queueMicrotask(() => {
+          if (image.naturalWidth > 0) {
+            handleLoad()
+          }
+          else {
+            handleError()
+          }
+        })
+      }
     })
+
+    return this.loadPromise
   }
 
   /**
@@ -66,7 +98,7 @@ export class ImageShape extends BaseShape {
     this.ctx = ctx
 
     if (!this.meta.imgSrc) {
-      throw new Error('ImageShape meta.src is required')
+      throw new Error('ImageShape meta.imgSrc is required')
     }
 
     switch (this.loadState) {

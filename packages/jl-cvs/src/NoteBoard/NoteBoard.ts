@@ -68,8 +68,8 @@ export class NoteBoard extends NoteBoardBase<NoteBoardEvent> {
     this.viewport = new Viewport({
       pan: { x: 0, y: 0 },
       zoom: 1,
-      minZoom: opts.minScale || 0.1,
-      maxZoom: opts.maxScale || 10,
+      minZoom: this.noteBoardOpts.minScale,
+      maxZoom: this.noteBoardOpts.maxScale,
       onViewportChange: () => {
         this.renderer.redrawAll()
         if (this.interaction.isBrushMode()) {
@@ -192,6 +192,7 @@ export class NoteBoard extends NoteBoardBase<NoteBoardEvent> {
     /** 清理历史记录 */
     this.history.cleanAll()
     this.events.rmEvent()
+    this.renderer.dispose()
     this.currentBrush = null
   }
 
@@ -226,7 +227,10 @@ export class NoteBoard extends NoteBoardBase<NoteBoardEvent> {
     }
 
     /** 添加到历史记录 */
-    this.interaction.addShapesToHistory([shape], shape.name)
+    const mode = shape.name === 'imageShape'
+      ? 'none'
+      : shape.name
+    this.interaction.addShapesToHistory([shape], mode)
 
     /** 重绘画板以显示新形状 */
     this.renderer.redrawAll()
@@ -234,7 +238,7 @@ export class NoteBoard extends NoteBoardBase<NoteBoardEvent> {
     /** 触发事件 */
     this.emit('shapeAdded', {
       shape,
-      mode: shape.name ?? this.mode,
+      mode,
     })
   }
 

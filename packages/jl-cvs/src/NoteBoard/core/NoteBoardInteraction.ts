@@ -1,7 +1,7 @@
-import type { NoteBoard, NoteBoardMode } from '../'
-import type { Point } from '../type'
 import type { BaseShape } from '@/Shapes/libs/BaseShape'
 import { excludeKeys } from '@/utils'
+import type { NoteBoard, NoteBoardMode } from '../'
+import type { Point } from '../type'
 
 /**
  * NoteBoard 交互逻辑模块
@@ -9,12 +9,14 @@ import { excludeKeys } from '@/utils'
 export class NoteBoardInteraction {
   /** 正在拖拽的形状副本 */
   draggedShape: BaseShape | null = null
+  /** 被拖拽形状的原始绘制模式，拖拽全程保持其混合模式语义 */
+  draggedShapeMode: NoteBoardMode | null = null
   /** 是否正在拖拽形状 */
   isDragging = false
   /** 拖拽起始的世界坐标 */
   dragStartPoint: Point = { x: 0, y: 0 }
 
-  constructor(private readonly noteBoard: NoteBoard) { }
+  constructor(private readonly noteBoard: NoteBoard) {}
 
   /**
    * 设置 DrawShape 的事件函数
@@ -80,6 +82,23 @@ export class NoteBoardInteraction {
   /**
    * 添加多个图形到历史记录（用于拖拽结束后）
    */
+  /**
+   * 查询形状最后一次入史时的绘制模式，拖拽时用于保持其混合模式语义
+   */
+  getShapeDrawMode(shape: BaseShape): NoteBoardMode | null {
+    const records = this.noteBoard.history.curValue
+    if (!records) {
+      return null
+    }
+    for (let i = records.length - 1; i >= 0; i--) {
+      const record = records[i]
+      if (record.shapes.some((s) => s.meta.id === shape.meta.id)) {
+        return record.mode
+      }
+    }
+    return null
+  }
+
   addShapesToHistory(shapes: BaseShape[], mode?: NoteBoardMode) {
     const lastRecord = this.noteBoard.history.curValue
     this.noteBoard.history.add([

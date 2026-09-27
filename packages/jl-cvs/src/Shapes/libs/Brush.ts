@@ -5,11 +5,6 @@ import { BaseShape } from './BaseShape'
 /**
  * 笔刷路径点
  */
-export interface BrushPoint {
-  x: number
-  y: number
-}
-
 /**
  * 笔刷形状类，用于自由绘制
  */
@@ -18,10 +13,11 @@ export class Brush extends BaseShape {
   /** 笔刷路径点集合 */
   private points: BrushPoint[] = []
 
-  constructor(opts: BaseShapeOpts) {
+  constructor(opts: BrushOpts) {
     super(opts)
-    /** 初始点 */
-    this.points.push({ x: opts.startX, y: opts.startY })
+    this.points = opts.points?.map(point => ({ ...point }))
+      ?? [{ x: opts.startX, y: opts.startY }]
+    this.updateBounds()
   }
 
   /**
@@ -38,6 +34,27 @@ export class Brush extends BaseShape {
    */
   getPoints(): BrushPoint[] {
     return [...this.points]
+  }
+
+  /**
+   * 平移笔刷路径及其包围盒
+   */
+  override translate(dx: number, dy: number) {
+    super.translate(dx, dy)
+    this.points.forEach((point) => {
+      point.x += dx
+      point.y += dy
+    })
+  }
+
+  /**
+   * 克隆笔刷并保留完整路径
+   */
+  override clone(): Brush {
+    return new Brush({
+      ...this.getCloneOpts(),
+      points: this.points,
+    })
   }
 
   /**
@@ -140,4 +157,13 @@ export class Brush extends BaseShape {
     /** 返回距离 */
     return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2)
   }
+}
+
+export interface BrushPoint {
+  x: number
+  y: number
+}
+
+export type BrushOpts = BaseShapeOpts & {
+  points?: BrushPoint[]
 }
