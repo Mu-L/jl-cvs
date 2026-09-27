@@ -1,8 +1,7 @@
-import type { DisposeOpts, NoteBoardEvent, NoteBoardMode, NoteBoardOptions } from './type'
-import type { ShapeType } from '@/Shapes/libs'
 import { getImg } from '@/canvasTool'
 import { createUnReDoList } from '@/utils'
 import { NoteBoardBase } from './NoteBoardBase'
+import type { DisposeOpts, NoteBoardEvent, NoteBoardMode, NoteBoardOptions } from './type'
 
 /**
  * 使用 base64 实现历史记录的画板
@@ -45,10 +44,12 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
    * CSS版本 拖拽、缩放画布
    * @param callback 在设置完成 canvas 后执行的回调
    */
-  async setTransform(callback?: (styles: {
-    transform: string
-    transformOrigin: string
-  }) => void) {
+  async setTransform(
+    callback?: (styles: {
+      transform: string
+      transformOrigin: string
+    }) => void,
+  ) {
     const transformOrigin = `${this.mousePoint.x}px ${this.mousePoint.y}px`
     const transform = `scale(${this.zoom}, ${this.zoom}) translate(${this.translateX}px, ${this.translateY}px)`
 
@@ -113,20 +114,19 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
       try {
         this.history.undo(async (base64) => {
           this.clear(false)
-          if (!base64)
-            return resolve(false)
+          if (!base64) return resolve(false)
 
           /** 保存当前的混合模式 */
           const currentCompositeOperation = this.ctx.globalCompositeOperation
           /** 临时设置为默认混合模式 */
           this.ctx.globalCompositeOperation = 'source-over'
 
-          const img = await getImg(base64, img => img.crossOrigin = 'anonymous') as HTMLImageElement
+          const img = await getImg(base64, (img) => img.crossOrigin = 'anonymous') as HTMLImageElement
           if (drawImg) {
             await drawImg(img)
           }
           else {
-            this.ctx.drawImage(img, 0, 0)
+            this.drawHistoryImage(img)
           }
 
           this.ctx.globalCompositeOperation = currentCompositeOperation
@@ -152,20 +152,19 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
       try {
         this.history.redo(async (base64) => {
           this.clear(false)
-          if (!base64)
-            return resolve(false)
+          if (!base64) return resolve(false)
 
           /** 保存当前的混合模式 */
           const currentCompositeOperation = this.ctx.globalCompositeOperation
           /** 临时设置为默认混合模式 */
           this.ctx.globalCompositeOperation = 'source-over'
 
-          const img = await getImg(base64, img => img.crossOrigin = 'anonymous') as HTMLImageElement
+          const img = await getImg(base64, (img) => img.crossOrigin = 'anonymous') as HTMLImageElement
           if (drawImg) {
             await drawImg(img)
           }
           else {
-            this.ctx.drawImage(img, 0, 0)
+            this.drawHistoryImage(img)
           }
 
           this.ctx.globalCompositeOperation = currentCompositeOperation
@@ -194,6 +193,15 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
    */
   canRedo(): boolean {
     return this.history.canRedo()
+  }
+
+  private drawHistoryImage(img: HTMLImageElement) {
+    this.ctx.save()
+    /** 物理坐标回放：base64 快照是物理像素，临时切回物理坐标系（见 utils/dpr 约定） */
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0)
+    this.ctx.globalCompositeOperation = 'source-over'
+    this.ctx.drawImage(img, 0, 0)
+    this.ctx.restore()
   }
 
   /**
@@ -259,8 +267,7 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
       this.dragStart = { x: e.offsetX, y: e.offsetY }
     }
 
-    if (!this.canDraw)
-      return
+    if (!this.canDraw) return
 
     /** 画笔模式 */
     this.isDrawing = true
@@ -297,8 +304,7 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
     /**
      * 画笔
      */
-    if (!this.canDraw || !this.isDrawing)
-      return
+    if (!this.canDraw || !this.isDrawing) return
 
     const { offsetX, offsetY } = e
     const { ctx, drawStart: start } = this
@@ -333,8 +339,7 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
       this.translateY += e.offsetY - this.dragStart.y
     }
 
-    if (!this.canDraw)
-      return
+    if (!this.canDraw) return
 
     this.isDrawing = false
     this.addNewRecord()
@@ -353,21 +358,18 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
       this.isDragging = false
     }
 
-    if (!this.canDraw)
-      return
+    if (!this.canDraw) return
     this.isDrawing = false
   }
 
   onContextMenu = (e: MouseEvent) => {
     this.emit('contextMenu', e)
-    if (this.noteBoardOpts.enableRightDrag !== false)
-      e.preventDefault()
+    if (this.noteBoardOpts.enableRightDrag !== false) e.preventDefault()
   }
 
   onWheel = (e: WheelEvent) => {
     e.preventDefault()
-    if (!this.isEnableZoom)
-      return
+    if (!this.isEnableZoom) return
 
     this.mousePoint = {
       x: e.offsetX,
@@ -388,4 +390,4 @@ export class NoteBoardWithBase64 extends NoteBoardBase<NoteBoardEvent> {
   }
 }
 
-export type NoteBoardWithBase64Mode = Exclude<NoteBoardMode, ShapeType> | Extract<NoteBoardMode, 'brush'>
+export type NoteBoardWithBase64Mode = Extract<NoteBoardMode, 'brush' | 'erase' | 'drag' | 'none'>

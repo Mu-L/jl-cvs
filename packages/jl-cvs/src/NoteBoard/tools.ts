@@ -1,12 +1,10 @@
+import { applyHiDPI } from '@/utils/dpr'
 import type { AddCanvasOpts, NoteBoardOptions, NoteBoardOptionsRequired } from './type'
 
-export function mergeOpts(
-  opts: NoteBoardOptions,
-  dpr: number,
-): NoteBoardOptionsRequired {
-  const defaultOpts: NoteBoardOptionsRequired = {
-    width: 800 * dpr,
-    height: 600 * dpr,
+export function mergeOpts(opts: NoteBoardOptions): NoteBoardOptionsRequired {
+  const defaultOpts: Omit<NoteBoardOptionsRequired, 'el'> = {
+    width: 800,
+    height: 600,
     minScale: 0.5,
     maxScale: 8,
     canvasZIndex: '20',
@@ -36,12 +34,9 @@ export function setCanvas(
   const { width, height, center, canvas, parentEl } = opts
   const { offsetHeight, offsetWidth } = parentEl
 
-  canvas.width = width * dpr
-  canvas.height = height * dpr
+  applyHiDPI(canvas, canvas.getContext('2d') as CanvasRenderingContext2D, width, height, dpr)
 
   canvas.style.position = 'absolute'
-  canvas.style.width = '100%'
-  canvas.style.height = '100%'
 
   /** 居中 */
   if (center) {

@@ -1,4 +1,3 @@
-import { getDPR } from '@/canvasTool'
 import { getColor } from '@/canvasTool/color'
 
 export class BombBall {
@@ -20,10 +19,7 @@ export class BombBall {
     public dirY: number,
     public color: string = getColor(),
     public r: number = 3,
-    private dpr = getDPR(),
-  ) {
-    this.r *= this.dpr
-  }
+  ) { }
 
   draw() {
     this.ctx.beginPath()

@@ -1,14 +1,22 @@
-import type { AddCanvasOpts, CanvasAttrs, CanvasItem, DisposeOpts, DrawImgOptions, ExportOptions, ImgInfo, NoteBoardMode, NoteBoardOptions, NoteBoardOptionsRequired } from './type'
-import type { ShapeType } from '@/Shapes/libs'
-import type { ILifecycleManager } from '@/types'
-import { EventBus } from '@jl-org/tool'
 import { clearAllCvs, createCvs, cutImg, getCvsImg, getDPR, getImg } from '@/canvasTool'
+import type { ILifecycleManager } from '@/types'
 import { getCircleCursor } from '@/utils'
+import { EventBus } from '@jl-org/tool'
+import { applyHiDPI } from '../utils/dpr'
 import { mergeOpts, setCanvas } from './tools'
+import type {
+  AddCanvasOpts,
+  CanvasAttrs,
+  CanvasItem,
+  DisposeOpts,
+  DrawImgOptions,
+  ExportOptions,
+  ImgInfo,
+  NoteBoardOptions,
+  NoteBoardOptionsRequired,
+} from './type'
 
-export abstract class NoteBoardBase<T extends Record<string, any>>
-  extends EventBus<T>
-  implements ILifecycleManager {
+export abstract class NoteBoardBase<T extends Record<string, any>> extends EventBus<T> implements ILifecycleManager {
   dpr = getDPR()
 
   /** 容器 */
@@ -22,6 +30,8 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
   imgCanvas = document.createElement('canvas')
   /** 图片画板 上下文 */
   imgCtx = this.imgCanvas.getContext('2d') as CanvasRenderingContext2D
+  /** 背景画布的绘制记录，用于视口变化后完整重绘 */
+  private imgDrawRecords: ImgInfo[] = []
   /**
    * 记录绘制的图片尺寸信息
    * 有了它才能自适应尺寸和居中绘制
@@ -97,7 +107,7 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
 
   constructor(opts: NoteBoardOptions) {
     super({ triggerBefore: true })
-    this.noteBoardOpts = mergeOpts(opts, this.dpr)
+    this.noteBoardOpts = mergeOpts(opts)
 
     /** 设置画笔画板置顶 */
     this.canvas.style.zIndex = this.noteBoardOpts.canvasZIndex
@@ -117,9 +127,6 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
       { canvas: this.canvas },
     )
     this.setStyle(this.noteBoardOpts)
-
-    this.ctx.scale(this.dpr, this.dpr)
-    this.imgCtx.scale(this.dpr, this.dpr)
   }
 
   protected get canDraw() {
@@ -157,36 +164,26 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
    */
   async exportAllLayer(
     options: Omit<ExportOptions, 'canvas'> = {},
-    canvasList: HTMLCanvasElement[] = this.canvasList.map(item => item.canvas),
+    canvasList: HTMLCanvasElement[] = this.canvasList.map((item) => item.canvas),
   ) {
     const canvasDataUrls = []
     for (const canvas of canvasList) {
-      canvasDataUrls.push(await this.exportLayer({
-        ...options,
-        canvas,
-      }))
+      canvasDataUrls.push(
+        await this.exportLayer({
+          ...options,
+          canvas,
+        }),
+      )
     }
 
-    const imgs = await Promise.all(canvasDataUrls.map(item => getImg(item))) as HTMLImageElement[]
+    const imgs = await Promise.all(canvasDataUrls.map((item) => getImg(item))) as HTMLImageElement[]
     for (const item of imgs) {
-      if (!item)
-        return ''
+      if (!item) return ''
     }
     const img = imgs[0]
-
-    let width: number,
-      height: number
-
-    if (options.exportOnlyImgArea) {
-      width = img.width
-      height = img.height
-    }
-    else {
-      width = this.noteBoardOpts.width
-      height = this.noteBoardOpts.height
-    }
-
-    const { ctx, cvs } = createCvs(width, height, { dpr: this.dpr })
+    const width = img.naturalWidth || img.width
+    const height = img.naturalHeight || img.height
+    const { ctx, cvs } = createCvs(width, height)
     for (const img of imgs) {
       ctx.drawImage(img, 0, 0)
     }
@@ -217,8 +214,7 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
     }
 
     const img = await getImg(rawBase64)
-    if (!img)
-      return ''
+    if (!img) return ''
 
     const {
       x,
@@ -245,8 +241,7 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
    * 根据 dpr 计算图片信息
    */
   calcImgInfoWithDPR(imgInfo = this.imgInfo) {
-    if (!imgInfo)
-      throw new Error('imgInfo is undefined')
+    if (!imgInfo) throw new Error('imgInfo is undefined')
 
     /**
      * 缩放回原始大小的计算过程
@@ -301,18 +296,17 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
     needClear && this.clear()
 
     const newImg = typeof img === 'string'
-      ? await getImg(img, img => img.crossOrigin = 'anonymous')
+      ? await getImg(img, (img) => img.crossOrigin = 'anonymous')
       : img
-    if (!newImg)
-      return new Error('Image load failed')
+    if (!newImg) return new Error('Image load failed')
 
     const {
       width: canvasWidth,
       height: canvasHeight,
     } = this.noteBoardOpts
 
-    const imgWidth = options.imgWidth ?? newImg.naturalWidth
-    const imgHeight = options.imgHeight ?? newImg.naturalHeight
+    const imgWidth = options.imgWidth ?? (newImg.naturalWidth || newImg.width)
+    const imgHeight = options.imgHeight ?? (newImg.naturalHeight || newImg.height)
 
     const scaleX = canvasWidth / imgWidth
     const scaleY = canvasHeight / imgHeight
@@ -334,30 +328,39 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
       y = (canvasHeight - drawHeight) / 2
     }
 
-    context.drawImage(
-      newImg,
+    const currentImgInfo: ImgInfo = {
+      minScale,
+      scaleX,
+      scaleY,
+      img: newImg,
+
       x,
       y,
       drawWidth,
       drawHeight,
-    )
-
-    if (needRecordImgInfo) {
-      this.imgInfo = {
-        minScale,
-        scaleX,
-        scaleY,
-        img: newImg,
-
-        x,
-        y,
-        drawWidth,
-        drawHeight,
-        rawWidth: imgWidth,
-        rawHeight: imgHeight,
-      }
+      rawWidth: imgWidth,
+      rawHeight: imgHeight,
     }
-    afterDraw?.(this.imgInfo)
+
+    context.drawImage(newImg, x, y, drawWidth, drawHeight)
+
+    if (context === this.imgCtx) {
+      this.imgDrawRecords.push(currentImgInfo)
+    }
+    if (needRecordImgInfo) {
+      this.imgInfo = currentImgInfo
+    }
+    afterDraw?.(currentImgInfo)
+  }
+
+  /**
+   * 按记录重绘背景画布
+   */
+  redrawImgCanvas() {
+    this.imgDrawRecords.forEach((item) => {
+      const { img, x, y, drawWidth, drawHeight } = item
+      this.imgCtx.drawImage(img, x, y, drawWidth, drawHeight)
+    })
   }
 
   /**
@@ -368,11 +371,16 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
     clearMask = true,
   ) {
     clearMask && clearAllCvs(this.ctx, this.canvas)
-    clearImg && clearAllCvs(this.imgCtx, this.imgCanvas)
+    if (clearImg) {
+      clearAllCvs(this.imgCtx, this.imgCanvas)
+      this.imgDrawRecords = []
+      this.imgInfo = undefined
+    }
   }
 
   /**
-   * 添加新的画布到 canvasList 中，记得手动设置 ctx.scale(dpr, dpr)
+   * 添加新的画布到 canvasList 中
+   * 尺寸与逻辑坐标变换由 setCanvas 内的 applyHiDPI 统一处理，无需手动设置
    */
   addCanvas(name: string, opts: AddCanvasOpts) {
     const options = this.getAddcanvasOpts(opts)
@@ -392,29 +400,27 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
    * @param ctx 指定某个画布上下文，不指定则设置全部
    */
   setStyle(recordStyle: CanvasAttrs, ctx?: CanvasRenderingContext2D) {
-    for (const k in recordStyle) {
-      const attr = recordStyle[k]
-
-      if (typeof attr === 'function') {
-        continue
+    const { width, height } = recordStyle
+    if (width !== undefined || height !== undefined) {
+      /** 尺寸变更必须走 applyHiDPI，避免 canvas.width 赋值丢失逻辑坐标系变换 */
+      for (const item of this.canvasList) {
+        const w = width ?? this.noteBoardOpts.width
+        const h = height ?? this.noteBoardOpts.height
+        applyHiDPI(item.canvas, item.ctx, w, h, this.dpr)
       }
+    }
 
-      if (k === 'width' || k === 'height') {
-        for (const item of this.canvasList) {
-          item.canvas[k] = attr * this.dpr
-        }
-        continue
-      }
+    const contexts = ctx
+      ? [ctx]
+      : this.canvasList.map((item) => item.ctx)
 
-      if (ctx) {
-        // @ts-ignore
-        ctx[k] = attr
-      }
-      else {
-        for (const item of this.canvasList) {
-          // @ts-ignore
-          item.ctx[k] = attr
-        }
+    for (const targetCtx of contexts) {
+      if (recordStyle.strokeStyle !== undefined) targetCtx.strokeStyle = recordStyle.strokeStyle
+      if (recordStyle.lineWidth !== undefined) targetCtx.lineWidth = recordStyle.lineWidth
+      if (recordStyle.fillStyle !== undefined) targetCtx.fillStyle = recordStyle.fillStyle
+      if (recordStyle.lineCap !== undefined) targetCtx.lineCap = recordStyle.lineCap
+      if (recordStyle.globalCompositeOperation !== undefined) {
+        targetCtx.globalCompositeOperation = recordStyle.globalCompositeOperation
       }
     }
   }
@@ -455,5 +461,3 @@ export abstract class NoteBoardBase<T extends Record<string, any>>
     }
   }
 }
-
-export type NoteBoardWithBase64Mode = Exclude<NoteBoardMode, ShapeType>

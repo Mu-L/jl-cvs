@@ -25,9 +25,9 @@ export function createFirework(
   cvs.style.width = `${_opts.width}px`
   cvs.style.height = `${_opts.height}px`
 
-  /* 坐标系改为从下往上 */
+  /** dpr 边界：一次性进入逻辑坐标系（含 y 轴翻转，无法走 applyHiDPI） */
   ctx.scale(dpr, -dpr)
-  ctx.translate(0, -cvs.height)
+  ctx.translate(0, -_opts.height)
 
   update(ctx, _opts)
 
@@ -67,14 +67,12 @@ export function createFirework(
         getBoomColor,
         r,
         speed,
-        dpr,
       )
       fireworkArr.push(fw)
     }
     if (fireworkArr.length > maxCount) {
       const fw = fireworkArr.shift()
-      if (fw)
-        bombArr.push(fw)
+      if (fw) bombArr.push(fw)
     }
     if (bombArr.length > maxCount) {
       bombArr.shift()
@@ -85,7 +83,7 @@ export function createFirework(
       fw.y += speed
       fw.opacity -= 0.01
     })
-    bombArr.forEach(bombBall => bombBall.bomb())
+    bombArr.forEach((bombBall) => bombBall.bomb())
 
     id = requestAnimationFrame(() => {
       update(ctx, opts)
