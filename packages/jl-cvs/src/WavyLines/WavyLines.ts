@@ -1,12 +1,13 @@
 import type { ILifecycleManager } from '../types'
-import type { MouseState, Point } from './types'
+import { applyHiDPI } from '../utils/dpr';
 import { Noise } from './Noise'
+import type { MouseState, Point } from './types'
 
 /**
  * 波浪线动画类
  *
- * 使用 noise 算法生成波浪效果，并根据鼠标交互产生形变。
- * 通过 `WavyLinesConfig` 可自定义线条间距、颜色、背景色、鼠标影响范围等参数。
+ * 使用 noise 算法生成波浪效果，并根据鼠标交互产生形变
+ * 通过 `WavyLinesConfig` 可自定义线条间距、颜色、背景色、鼠标影响范围等参数
  */
 export class WavyLines implements ILifecycleManager {
   private ctx: CanvasRenderingContext2D
@@ -15,6 +16,7 @@ export class WavyLines implements ILifecycleManager {
   private noise: Noise
   private bounding: DOMRect
   private config: Required<WavyLinesConfig>
+  private animationFrameId: number | null = null
 
   // ======================
   // * Hanlders
@@ -25,8 +27,7 @@ export class WavyLines implements ILifecycleManager {
 
   constructor(config: WavyLinesConfig) {
     const ctx = config.canvas.getContext('2d')
-    if (!ctx)
-      throw new Error('无法获取canvas上下文')
+    if (!ctx) throw new Error('Can not get canvas context')
 
     this.ctx = ctx
     this.config = {
@@ -68,7 +69,7 @@ export class WavyLines implements ILifecycleManager {
     this.setSize()
     this.setLines()
     this.bindEvent()
-    requestAnimationFrame(this.tick.bind(this))
+    this.start()
   }
 
   /** 绑定事件 */
@@ -89,7 +90,23 @@ export class WavyLines implements ILifecycleManager {
    * 销毁实例，移除事件监听
    */
   dispose(): void {
+    this.stop()
     this.rmEvent()
+  }
+
+  /** 开始动画 */
+  start(): void {
+    if (this.animationFrameId !== null) return
+
+    this.animationFrameId = requestAnimationFrame(this.tick)
+  }
+
+  /** 停止动画 */
+  stop(): void {
+    if (this.animationFrameId === null) return
+
+    cancelAnimationFrame(this.animationFrameId)
+    this.animationFrameId = null
   }
 
   private onResize(): void {
@@ -122,8 +139,12 @@ export class WavyLines implements ILifecycleManager {
 
   private setSize(): void {
     this.bounding = this.config.canvas.getBoundingClientRect()
-    this.config.canvas.width = this.bounding.width
-    this.config.canvas.height = this.bounding.height
+    applyHiDPI(
+      this.config.canvas,
+      this.ctx,
+      this.bounding.width,
+      this.bounding.height,
+    )
   }
 
   private setLines(): void {
@@ -198,7 +219,7 @@ export class WavyLines implements ILifecycleManager {
     })
   }
 
-  private moved(point: Point, withCursorForce = true): { x: number, y: number } {
+  private moved(point: Point, withCursorForce = true): { x: number; y: number } {
     const coords = {
       x: point.x + point.wave.x + (withCursorForce
         ? point.cursor.x
@@ -237,7 +258,7 @@ export class WavyLines implements ILifecycleManager {
     this.ctx.stroke()
   }
 
-  private tick(time: number): void {
+  private tick = (time: number): void => {
     // Smooth mouse movement
     this.mouse.sx += (this.mouse.x - this.mouse.sx) * 0.1
     this.mouse.sy += (this.mouse.y - this.mouse.sy) * 0.1
@@ -261,7 +282,7 @@ export class WavyLines implements ILifecycleManager {
     this.movePoints(time)
     this.drawLines()
 
-    requestAnimationFrame(this.tick.bind(this))
+    this.animationFrameId = requestAnimationFrame(this.tick)
   }
 }
 

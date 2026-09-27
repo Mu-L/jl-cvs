@@ -1,3 +1,5 @@
+import { getDPR } from '@/canvasTool'
+import { applyHiDPI } from '../utils/dpr'
 import type { mouseMoveCb, ScratchOpts } from './types'
 
 /**
@@ -30,16 +32,19 @@ function setStyle(canvas: HTMLCanvasElement, opts: ScratchOpts) {
     lineJoin = 'round',
   } = opts || {}
 
-  width && (canvas.width = width)
-  height && (canvas.height = height)
+  const w = width ?? canvas.width
+  const h = height ?? canvas.height
 
   const ctx = canvas.getContext('2d', opts.ctxOpts)
   if (!ctx) {
     throw new Error('Failed to get canvas context')
   }
 
+  /** dpr 边界统一入口：未传尺寸时按 canvas 现有尺寸提升分辩率 */
+  applyHiDPI(canvas, ctx, w, h)
+
   ctx.fillStyle = bg
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillRect(0, 0, w, h)
 
   /** 什么颜色都行 */
   ctx.fillStyle = 'transparent'
@@ -72,20 +77,25 @@ function bindEvent(
   onScratch?: mouseMoveCb,
 ) {
   canvas.addEventListener('mousedown', onMouseDown)
-  canvas.addEventListener('mouseup', onMouseUp)
 
   /** 移动端支持 */
   canvas.addEventListener('touchstart', onTouchStart)
-  canvas.addEventListener('touchend', onTouchEnd)
-  canvas.addEventListener('touchcancel', onTouchEnd)
 
   return rmEvent
 
+  /**
+   * 客户端坐标 → 画布逻辑坐标
+   * ctx 在 applyHiDPI 后处于逻辑坐标系（setTransform(dpr)），
+   * 因此这里必须除以 dpr 得到逻辑尺寸，不能用 canvas.width（物理尺寸）
+   */
   function getCanvasCoordinates(clientX: number, clientY: number) {
     const rect = canvas.getBoundingClientRect()
+    const dpr = getDPR()
+    const logicalW = canvas.width / dpr
+    const logicalH = canvas.height / dpr
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+      x: (clientX - rect.left) * (logicalW / rect.width),
+      y: (clientY - rect.top) * (logicalH / rect.height),
     }
   }
 
@@ -94,7 +104,8 @@ function bindEvent(
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
     ctx.beginPath()
     ctx.moveTo(x, y)
-    canvas.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
   }
 
   function onMouseMove(e: MouseEvent) {
@@ -112,7 +123,9 @@ function bindEvent(
       const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
       ctx.beginPath()
       ctx.moveTo(x, y)
-      canvas.addEventListener('touchmove', onTouchMove)
+      window.addEventListener('touchmove', onTouchMove, { passive: false })
+      window.addEventListener('touchend', onTouchEnd)
+      window.addEventListener('touchcancel', onTouchEnd)
     }
   }
 
@@ -128,20 +141,23 @@ function bindEvent(
   }
 
   function onMouseUp() {
-    canvas.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
   }
 
   function onTouchEnd() {
-    canvas.removeEventListener('touchmove', onTouchMove)
+    window.removeEventListener('touchmove', onTouchMove)
+    window.removeEventListener('touchend', onTouchEnd)
+    window.removeEventListener('touchcancel', onTouchEnd)
   }
 
   function rmEvent() {
     canvas.removeEventListener('mousedown', onMouseDown)
-    canvas.removeEventListener('mousemove', onMouseMove)
-    canvas.removeEventListener('mouseup', onMouseUp)
     canvas.removeEventListener('touchstart', onTouchStart)
-    canvas.removeEventListener('touchmove', onTouchMove)
-    canvas.removeEventListener('touchend', onTouchEnd)
-    canvas.removeEventListener('touchcancel', onTouchEnd)
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
+    window.removeEventListener('touchmove', onTouchMove)
+    window.removeEventListener('touchend', onTouchEnd)
+    window.removeEventListener('touchcancel', onTouchEnd)
   }
 }

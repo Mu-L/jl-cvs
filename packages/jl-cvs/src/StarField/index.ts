@@ -1,4 +1,5 @@
 import { debounce } from '@jl-org/tool'
+import { applyHiDPI } from '../utils/dpr';
 
 export class StarField {
   private canvas: HTMLCanvasElement
@@ -6,6 +7,7 @@ export class StarField {
   private stars: IStar[]
   private time: number = 0
   private config: Required<StarFieldConfig>
+  private animationFrameId: number | null = null
 
   private onResizeDebounce: (width: number, height: number) => void
 
@@ -41,14 +43,12 @@ export class StarField {
     /** 合并用户配置和默认配置 */
     this.config = { ...defaultConfig, ...options }
 
-    /** 设置画布尺寸 */
-    this.canvas.width = this.config.width
-    this.canvas.height = this.config.height
+    /** 设置画布尺寸（dpr 边界统一入口） */
+    applyHiDPI(this.canvas, this.context, this.config.width, this.config.height)
 
     this.onResizeDebounce = debounce(
       (newWidth, newHeight) => {
-        this.canvas.width = newWidth
-        this.canvas.height = newHeight
+        applyHiDPI(this.canvas, this.context, newWidth, newHeight)
         this.initStars()
       },
       this.config.resizeDebounceTime,
@@ -58,11 +58,31 @@ export class StarField {
     this.initStars()
 
     /** 开始动画 */
-    this.animate()
+    this.start()
   }
 
   onResize(width: number, height: number): void {
     this.onResizeDebounce(width, height)
+  }
+
+  /** 开始动画 */
+  start() {
+    if (this.animationFrameId !== null) return
+
+    this.animate()
+  }
+
+  /** 停止动画 */
+  stop() {
+    if (this.animationFrameId === null) return
+
+    cancelAnimationFrame(this.animationFrameId)
+    this.animationFrameId = null
+  }
+
+  /** 销毁实例 */
+  dispose() {
+    this.stop()
   }
 
   /**
@@ -183,7 +203,7 @@ export class StarField {
   private animate(): void {
     this.update()
     this.draw()
-    requestAnimationFrame(() => this.animate())
+    this.animationFrameId = requestAnimationFrame(() => this.animate())
   }
 }
 

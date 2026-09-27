@@ -1,6 +1,7 @@
-import type { TechNumOpts } from './types'
 import { getColor as _getColor, getWinHeight, getWinWidth } from '@/canvasTool'
 import { randomStr } from '@/utils'
+import type { TechNumOpts } from './types'
+import { applyHiDPI } from '../utils/dpr';
 
 /**
  * 绘制黑客科技数字墙
@@ -22,21 +23,21 @@ export function createTechNum(canvas: HTMLCanvasElement, opts: TechNumOpts = {})
     durationMS = 30,
   } = opts
 
-  canvas.width = width
-  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+
+  /** dpr 边界统一入口 */
+  applyHiDPI(canvas, ctx, width, height)
 
   let totalCol: number,
     /** 每列文字 y 轴索引 */
     colNext: number[]
 
-  const ctx = canvas.getContext('2d')!
   let id: number
 
   initData(width, height)
 
   function initData(width: number, height: number) {
-    canvas.width = width
-    canvas.height = height
+    applyHiDPI(canvas, ctx, width, height)
 
     totalCol = Math.floor(width / colWidth)
     /** 每列文字 y 轴索引 */

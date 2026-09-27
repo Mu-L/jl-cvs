@@ -1,4 +1,5 @@
-import type { Optional } from '@jl-org/ts-tool'
+import type { Optional } from '@/types'
+import { applyHiDPI } from '@/utils/dpr'
 import { applyAnimation, Clock, getWinHeight, getWinWidth, isFn } from '@jl-org/tool'
 
 /**
@@ -13,11 +14,15 @@ import { applyAnimation, Clock, getWinHeight, getWinWidth, isFn } from '@jl-org/
  * ```
  */
 export class WaterRipple {
-  private declare x: number
-  private declare y: number
+  declare private x: number
+  declare private y: number
   private clock: Clock
   private opts: Optional<Required<RippleOpts>, 'strokeStyle'>
   private stopAnimation?: VoidFunction
+  private resizeHandler = () => {
+    this.opts.onResize()
+    this.initCanvas()
+  }
 
   canvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
@@ -33,7 +38,7 @@ export class WaterRipple {
       circleCount: 13,
       intensity: 1,
       strokeStyle: '#3336',
-      onResize: () => { },
+      onResize: () => {},
       ...opts,
     }
 
@@ -43,10 +48,7 @@ export class WaterRipple {
 
     this.initCanvas()
     this.startAnimation()
-    window.addEventListener('resize', () => {
-      this.opts.onResize()
-      this.initCanvas()
-    })
+    window.addEventListener('resize', this.resizeHandler)
   }
 
   /**
@@ -65,6 +67,7 @@ export class WaterRipple {
    */
   startAnimation() {
     this.stopAnimation?.()
+    this.clock.start()
     this.stopAnimation = applyAnimation(() => {
       this.drawCircles()
     })
@@ -75,7 +78,14 @@ export class WaterRipple {
    */
   stop() {
     this.stopAnimation?.()
+    this.stopAnimation = undefined
     this.clock.stop()
+  }
+
+  /** 销毁动画和全局事件 */
+  dispose() {
+    this.stop()
+    window.removeEventListener('resize', this.resizeHandler)
   }
 
   private drawCircle(radius: number) {
@@ -122,8 +132,7 @@ export class WaterRipple {
 
     this.x = width / 2 + this.opts.xOffset
     this.y = height / 2 + this.opts.yOffset
-    this.canvas.width = width
-    this.canvas.height = height
+    applyHiDPI(this.canvas, this.ctx, width, height)
   }
 }
 

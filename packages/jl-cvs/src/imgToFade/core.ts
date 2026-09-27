@@ -1,6 +1,7 @@
-import type { BallContext, ImgToFadeOpts } from './types'
 import { createCvs, getImg, getPixel } from '@/canvasTool'
 import { Ball } from '@/canvasTool/Ball'
+import type { BallContext, ImgToFadeOpts } from './types'
+import { applyHiDPI } from '../utils/dpr';
 
 /**
  * 让图片灰飞烟灭效果
@@ -22,8 +23,7 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
   } = await checkAndInit(opts)
 
   const bgCtx = bgCanvas.getContext('2d')!
-  bgCanvas.width = width
-  bgCanvas.height = height
+  applyHiDPI(bgCanvas, bgCtx, width, height)
 
   const { cvs: imgCvs, ctx: imgCtx } = createCvs(
     imgWidth,
@@ -33,6 +33,7 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
   imgCtx.drawImage(img, 0, 0, imgWidth, imgHeight)
 
   const destroyBalls: Ball<BallContext>[] = []
+  let animationFrameId: number | null = null
   const imgData = imgCtx.getImageData(0, 0, imgWidth, imgHeight)
   const pixelIndexs: number[] = []
 
@@ -40,7 +41,25 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
     pixelIndexs.push(i)
   }
 
-  drawPoint()
+  start()
+
+  return {
+    start,
+    stop,
+  }
+
+  function start() {
+    if (animationFrameId !== null) return
+
+    drawPoint()
+  }
+
+  function stop() {
+    if (animationFrameId === null) return
+
+    cancelAnimationFrame(animationFrameId)
+    animationFrameId = null
+  }
 
   function drawPoint() {
     /** 覆盖上背景先，再用图片画布填充指定像素点，形成灰飞烟灭效果 */
@@ -57,7 +76,11 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
 
     createAndDelParticle(ballCount)
     drawDestroyBalls()
-    requestAnimationFrame(drawPoint)
+    if (pixelIndexs.length === 0 && destroyBalls.length === 0) {
+      animationFrameId = null
+      return
+    }
+    animationFrameId = requestAnimationFrame(drawPoint)
   }
 
   function getCenterPos(): [x: number, y: number] {
@@ -71,10 +94,11 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
    * 创建小球，并删除图片像素
    */
   function createAndDelParticle(size: number) {
-    for (let i = 0; i < size; i++) {
+    const createCount = Math.min(size, pixelIndexs.length)
+    for (let i = 0; i < createCount; i++) {
       const [x, y, index] = getXY()
       const [R, G, B, A] = getPixel(x, y, imgData)
-      const color = `rgba(${R}, ${G}, ${B}, ${A})`
+      const color = `rgba(${R}, ${G}, ${B}, ${A / 255})`
 
       const [centerX, centerY] = getCenterPos()
       const point = new Ball({
@@ -90,7 +114,8 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
 
       clearPixel(x, y, index)
       /** 偷偷多删除一些像素点 不然消失的太慢了 */
-      for (let i = 0; i < extraDelCount; i++) {
+      const deleteCount = Math.min(extraDelCount, pixelIndexs.length)
+      for (let i = 0; i < deleteCount; i++) {
         const [x, y, index] = getXY()
         clearPixel(x, y, index)
       }
@@ -101,7 +126,7 @@ export async function imgToFade(bgCanvas: HTMLCanvasElement, opts: ImgToFadeOpts
    * 批量绘制消失的像素点
    */
   function drawDestroyBalls() {
-    for (let i = 0; i < destroyBalls.length; i++) {
+    for (let i = destroyBalls.length - 1; i >= 0; i--) {
       const ball = destroyBalls[i]
 
       ball.x += Math.random() * speed
@@ -160,7 +185,7 @@ async function checkAndInit(opts: ImgToFadeOpts) {
     throw new Error('图片大小不能大于容器')
   }
 
-  const img = await getImg(src, img => img.crossOrigin = 'anonymous')
+  const img = await getImg(src, (img) => img.crossOrigin = 'anonymous')
   if (!img) {
     throw new Error('图片不可用')
   }
