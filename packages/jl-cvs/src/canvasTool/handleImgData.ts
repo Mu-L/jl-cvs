@@ -26,9 +26,9 @@ export function adaptiveGrayscale(imageData: ImageData): ImageData {
 export function enhanceContrast(imageData: ImageData, factor: number = 1.2): ImageData {
   const data = imageData.data
   for (let i = 0; i < data.length; i += 4) {
-    data[i] = Math.min(255, data[i] * factor) // 对R通道增强对比度
-    data[i + 1] = Math.min(255, data[i + 1] * factor) // 对G通道增强对比度
-    data[i + 2] = Math.min(255, data[i + 2] * factor) // 对B通道增强对比度
+    data[i] = clampChannel((data[i] - 128) * factor + 128)
+    data[i + 1] = clampChannel((data[i + 1] - 128) * factor + 128)
+    data[i + 2] = clampChannel((data[i + 2] - 128) * factor + 128)
   }
   return imageData
 }
@@ -92,7 +92,8 @@ export async function changeImgColor(
     }
   })
 
-  const { cvs, ctx } = createCvs(imgData.width, imgData.height)
+  const { width, height } = cpImgData
+  const { cvs, ctx } = createCvs(width, height)
   ctx.putImageData(cpImgData, 0, 0)
   const base64 = cvs.toDataURL()
 
@@ -120,6 +121,10 @@ export function getGrayscaleArray(imageData: ImageData): Uint8Array {
   }
 
   return grayData
+}
+
+function clampChannel(value: number) {
+  return Math.max(0, Math.min(255, value))
 }
 
 export type ChangeImgColorOpts = {

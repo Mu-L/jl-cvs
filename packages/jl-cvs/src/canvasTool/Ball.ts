@@ -32,20 +32,19 @@ export class Ball<Context extends object = any> {
     this.opacity = opacity ?? 1
     this.ctx = ctx
     this.extraContext = extraContext
-
-    if (this.opacity !== 1) {
-      ctx.globalAlpha = this.opacity
-    }
   }
 
   /**
    * @param ctx 指定上下文绘制，默认当前类的上下文
    */
   draw(ctx: CanvasRenderingContext2D = this.ctx) {
+    ctx.save()
+    ctx.globalAlpha = this.opacity
     ctx.beginPath()
     ctx.fillStyle = this.color
     ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2)
     ctx.fill()
+    ctx.restore()
   }
 }
 

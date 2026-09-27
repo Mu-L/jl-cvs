@@ -1,4 +1,4 @@
-import type { PartRequired } from '@jl-org/ts-tool'
+import type { PartRequired } from '@/types'
 import type { CaptureVideoFrameData } from '@/worker/captureVideoFrame'
 import { blobToBase64, isFn, splitWorkerTask, type TransferType } from '@jl-org/tool'
 import { createCvs } from './'
@@ -28,7 +28,12 @@ export async function captureVideoFrame<
     : HandleImgReturn<T>[]
   >
 
-  const src = getUrl()
+  const localObjectUrl = typeof fileOrUrl === 'string'
+    ? undefined
+    : URL.createObjectURL(fileOrUrl)
+  const src = typeof fileOrUrl === 'string'
+    ? fileOrUrl
+    : localObjectUrl!
   const times = (Array.isArray(time)
     ? time
     : [time])
@@ -38,33 +43,31 @@ export async function captureVideoFrame<
     quality: 0.5,
     ...options,
   }
+  try {
+    const data = await runWithMutWorker()
+    if (data !== false) {
+      return data
+    }
 
-  const data = await runWithMutWorker()
-  if (data !== false) {
-    return data
+    const resPromises = times.map(time => onVideoSeeked(
+      time,
+      videoEl => videoToCanvas(videoEl),
+    ))
+
+    return Promise.all(resPromises) as unknown as ReturnRes
   }
-
-  const { ctx, cvs } = createCvs()
-  const resPromises = times.map(time => onVideoSeeked(
-    time,
-    videoEl => videoToCanvas(videoEl),
-  ))
-
-  return Promise.all(resPromises) as unknown as ReturnRes
+  finally {
+    if (localObjectUrl) {
+      URL.revokeObjectURL(localObjectUrl)
+    }
+  }
 
   /***************************************************
    *                    Function
    ***************************************************/
-  function getUrl() {
-    return typeof fileOrUrl === 'string'
-      ? fileOrUrl
-      : URL.createObjectURL(fileOrUrl)
-  }
-
   async function runWithMutWorker(): Promise<ReturnRes | false> {
-    const workerJS = `self.onmessage=async function({data:n}){const e=[];for(const a of n){const t=await c(a);e.push(t)}self.postMessage(e,{transfer:e});async function c(a){const{imageBitmap:t,timestamp:g,mimeType:o,quality:r}=a,s=new OffscreenCanvas(t.width,t.height);return s.getContext("2d").drawImage(t,0,0),new Promise((f,i)=>{s.convertToBlob({type:o,quality:r}).then(async m=>{const u=await m.arrayBuffer();t.close(),f(u)}).catch(i)})}};
+    const workerJS = `self.onmessage=async function({data:n}){const e=[];for(const a of n)e.push(await c(a));self.postMessage(e,{transfer:e});async function c(a){const{imageBitmap:t,mimeType:o,quality:r}=a;try{const s=new OffscreenCanvas(t.width,t.height);s.getContext("2d").drawImage(t,0,0);const m=await s.convertToBlob({type:o,quality:r});return await m.arrayBuffer()}finally{t.close()}}};
 `
-    const workerURL = URL.createObjectURL(new Blob([workerJS], { type: 'text/javascript' }))
 
     const isSupport = checkImageCaptureSupport()
     if (!isSupport) {
@@ -72,56 +75,91 @@ export async function captureVideoFrame<
       return false
     }
 
-    const videoData: CaptureVideoFrameData[] = await Promise.all(
-      times.map(time => onVideoSeeked(time, genWorkerData)),
-    )
+    const workerURL = options.workerPath
+      ? undefined
+      : URL.createObjectURL(new Blob([workerJS], { type: 'text/javascript' }))
+    let videoData: CaptureVideoFrameData[] = []
 
-    const data = await splitWorkerTask<
-      CaptureVideoFrameData[],
-      ArrayBuffer[],
-      ArrayBuffer
-    >({
-      WorkerScript: options.workerPath || workerURL,
-      totalItems: times.length,
-      async genSendMsg(st, et) {
-        const data = videoData.slice(st, et)
-        return Object.assign(data, {
-          structuredSerializeOptions: {
-            transfer: data.map(item => item.imageBitmap),
-          } satisfies StructuredSerializeOptions,
-        })
-      },
-      onMessage(message, _workerInfo, callbacks) {
-        callbacks.resolveBatch(message)
-      },
-    })
+    try {
+      const frameResults = await Promise.allSettled(
+        times.map(time => onVideoSeeked(time, genWorkerData)),
+      )
+      videoData = frameResults
+        .filter(result => result.status === 'fulfilled')
+        .map(result => result.value)
+      const rejectedFrame = frameResults.find(
+        result => result.status === 'rejected',
+      )
+      if (rejectedFrame?.status === 'rejected') {
+        throw rejectedFrame.reason
+      }
 
-    const blobData = data.map((item: ArrayBuffer) => new Blob([item], { type: opts.mimeType }))
-    if (resType === 'blob') {
-      return blobData as unknown as ReturnRes
+      const data = await splitWorkerTask<
+        CaptureVideoFrameData[],
+        ArrayBuffer[],
+        ArrayBuffer
+      >({
+        WorkerScript: options.workerPath || workerURL!,
+        totalItems: times.length,
+        async genSendMsg(st, et) {
+          const data = videoData.slice(st, et)
+          return Object.assign(data, {
+            structuredSerializeOptions: {
+              transfer: data.map(item => item.imageBitmap),
+            } satisfies StructuredSerializeOptions,
+          })
+        },
+        onMessage(message, _workerInfo, callbacks) {
+          callbacks.resolveBatch(message)
+        },
+      })
+
+      const blobData = data.map((item: ArrayBuffer) => new Blob([item], { type: opts.mimeType }))
+      if (resType === 'blob') {
+        return blobData as unknown as ReturnRes
+      }
+
+      const base64s = await Promise.all(blobData.map(item => blobToBase64(item)))
+      return base64s as unknown as ReturnRes
     }
-
-    const base64s = await Promise.all(blobData.map(item => blobToBase64(item)))
-    return base64s as unknown as ReturnRes
+    finally {
+      workerURL && URL.revokeObjectURL(workerURL)
+      videoData.forEach((item) => {
+        try {
+          item.imageBitmap.close()
+        }
+        catch {
+          /** 传输后的 ImageBitmap 已由 Worker 接管 */
+        }
+      })
+    }
   }
 
   async function genWorkerData(video: HTMLVideoElement): Promise<CaptureVideoFrameData> {
     const stream = video.captureStream() as MediaStream
     const track = stream.getVideoTracks()[0]
+    if (!track) {
+      throw new Error('Video stream does not contain a video track')
+    }
 
-    const imageCapture = new ImageCapture(track)
-    const imageBitmap = await imageCapture.grabFrame()
-    const timestamp = video.currentTime
+    try {
+      const imageCapture = new ImageCapture(track)
+      const imageBitmap = await imageCapture.grabFrame()
 
-    return {
-      imageBitmap,
-      timestamp,
-      mimeType: opts.mimeType,
-      quality: opts.quality,
+      return {
+        imageBitmap,
+        timestamp: video.currentTime,
+        mimeType: opts.mimeType,
+        quality: opts.quality,
+      }
+    }
+    finally {
+      track.stop()
     }
   }
 
   async function videoToCanvas(video: HTMLVideoElement) {
+    const { ctx, cvs } = createCvs()
     let w: number,
       h: number
 
@@ -155,31 +193,79 @@ export async function captureVideoFrame<
     cb: (video: HTMLVideoElement) => Promise<R>,
   ): Promise<R> {
     const video = document.createElement('video')
-
-    video.currentTime = time
     video.muted = true
-    video.src = src
-    video.autoplay = true
     video.crossOrigin = 'anonymous'
+    video.preload = 'auto'
 
     Object.assign(video.style, {
       position: 'absolute',
       top: '-9999px',
       transform: 'translate(-9999px)',
     })
-    document.body.appendChild(video)
-
     return new Promise<R>((resolve, reject) => {
-      video.oncanplay = async () => {
-        const res = await cb(video)
-        resolve(res)
-        document.body.removeChild(video)
+      let settled = false
+
+      const cleanup = () => {
+        video.pause()
+        video.onloadedmetadata = null
+        video.onloadeddata = null
+        video.onseeked = null
+        video.onerror = null
+        video.removeAttribute('src')
+        video.load()
+        video.remove()
       }
 
-      video.onerror = (err) => {
-        reject(err)
-        document.body.removeChild(video)
+      const capture = async () => {
+        if (settled)
+          return
+
+        settled = true
+        try {
+          resolve(await cb(video))
+        }
+        catch (error) {
+          reject(error)
+        }
+        finally {
+          cleanup()
+        }
       }
+
+      video.onerror = () => {
+        if (settled)
+          return
+
+        settled = true
+        const error = video.error
+          ? new Error(video.error.message)
+          : new Error('Video load failed')
+        cleanup()
+        reject(error)
+      }
+      video.onloadedmetadata = () => {
+        const maxTime = Number.isFinite(video.duration)
+          ? Math.max(0, video.duration - 1)
+          : Math.max(0, time)
+        const targetTime = Math.min(Math.max(0, time), maxTime)
+
+        if (targetTime === 0) {
+          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            void capture()
+          }
+          else {
+            video.onloadeddata = () => void capture()
+          }
+          return
+        }
+
+        video.onseeked = () => void capture()
+        video.currentTime = targetTime
+      }
+
+      document.body.appendChild(video)
+      video.src = src
+      video.load()
     })
   }
 }

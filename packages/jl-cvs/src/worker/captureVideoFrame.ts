@@ -13,20 +13,18 @@ self.onmessage = async function ({ data }: MessageEvent<CaptureVideoFrameData[]>
   })
 
   async function getCaptureFrame(videoData: CaptureVideoFrameData) {
-    const { imageBitmap, timestamp, mimeType, quality } = videoData
-    const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height)
-    const ctx = canvas.getContext('2d')!
+    const { imageBitmap, mimeType, quality } = videoData
 
-    ctx.drawImage(imageBitmap, 0, 0)
-    return new Promise<ArrayBuffer>((resolve, reject) => {
-      canvas.convertToBlob({ type: mimeType, quality })
-        .then(async (blob) => {
-          const buffer = await blob.arrayBuffer()
-          imageBitmap.close()
-          resolve(buffer)
-        })
-        .catch(reject)
-    })
+    try {
+      const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height)
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(imageBitmap, 0, 0)
+      const blob = await canvas.convertToBlob({ type: mimeType, quality })
+      return await blob.arrayBuffer()
+    }
+    finally {
+      imageBitmap.close()
+    }
   }
 }
 
