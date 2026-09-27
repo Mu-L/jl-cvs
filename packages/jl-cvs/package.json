@@ -38,6 +38,13 @@
   ],
   "author": "CJL <2662442385@qq.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beixiyo/jl-cvs.git"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
   "publishConfig": {
     "access": "public"
   },

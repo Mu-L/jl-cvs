@@ -1,8 +1,7 @@
-import type { PartRequired } from '@jl-org/ts-tool'
-import type { ShapeType } from '@/Shapes/libs'
-import type { BaseShape } from '@/Shapes/libs/BaseShape'
+import type { BaseShape, ShapeType } from '@/Shapes'
+import type { PartRequired } from '@/types'
 
-export type NoteBoardMode = 'erase' | 'drag' | 'none' | ShapeType
+export type NoteBoardMode = 'brush' | 'erase' | 'drag' | 'none' | Exclude<ShapeType, 'brush' | 'imageShape'>
 
 type OnUnRedoParams = {
   recordPath?: RecordPath[]
@@ -151,8 +150,6 @@ export type CanvasAttrs = {
    * 画笔模式，默认 source-over
    */
   globalCompositeOperation?: GlobalCompositeOperation
-
-  [K: string]: any
 }
 
 export type DrawImgOptions = {
